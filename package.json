@@ -1,11 +1,11 @@
 {
   "name": "aindreyway-mcp-codex-keeper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An intelligent MCP server that serves as a guardian of development knowledge, providing Cline assistants with curated access to latest documentation and best practices",
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "codex-keeper": "./build/index.js"
+    "aindreyway-mcp-codex-keeper": "./build/index.js"
   },
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
