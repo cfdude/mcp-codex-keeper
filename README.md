@@ -1,30 +1,21 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.0.0-green)
+![Version](https://img.shields.io/badge/version-1.0.1-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-An intelligent MCP server that serves as a guardian of development knowledge, providing Cline assistants with curated access to latest documentation and best practices across the software development landscape.
+An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
 
-## 🌟 Features
+## 🚀 Quick Start for Cline Users
 
-- **Smart Documentation Management**: Automatically fetches and indexes documentation from various sources
-- **Best Practices Integration**: Keeps track of latest development best practices
-- **Category-based Organization**: Well-organized documentation by technology and domain
-- **Intelligent Search**: Fast and accurate documentation search
-- **Auto-updating Sources**: Keeps documentation up-to-date automatically
-- **Easy Integration**: Simple setup with Cline assistant
+Just tell your Cline assistant:
 
-## 🚀 Quick Start
+```
+Add MCP server with this configuration:
 
-### Installation
-
-Add to your Cline MCP settings (`claude_desktop_config.json`):
-
-```json
 {
   "mcpServers": {
-    "codex-keeper": {
+    "aindreyway-codex-keeper": {
       "command": "npx",
       "args": ["-y", "aindreyway-mcp-codex-keeper@latest"],
       "disabled": false
@@ -33,11 +24,11 @@ Add to your Cline MCP settings (`claude_desktop_config.json`):
 }
 ```
 
-That's it! Your Cline assistant will now have access to the latest documentation and best practices.
+That's it! Your assistant will now have access to the latest documentation and best practices.
 
-### Usage Examples
+## 🎯 What Your Assistant Can Do
 
-Ask your Cline assistant to:
+Ask your assistant to:
 
 - "Show me the latest React documentation"
 - "Find best practices for TypeScript development"
@@ -69,29 +60,28 @@ Search through documentation with category filtering.
 - Language
 - MCP
 - MCP-Guide
-- And more...
+- Database
+- DevOps
+- Security
+- Testing
+- Architecture
+- Mobile
+- AI
+- Cloud
 
-## 🔧 Configuration
+## 🔧 Technical Details
 
-The server automatically stores documentation in a local cache for fast access. No additional configuration required!
+The server automatically:
 
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-
-1. Fork the repository
-2. Create a feature branch
-3. Submit a Pull Request
+- Manages documentation from various sources
+- Keeps track of latest development best practices
+- Provides intelligent search capabilities
+- Updates documentation automatically
+- Supports tagging and categorization
 
 ## 📝 License
 
 MIT License - feel free to use this in your projects!
-
-## 🔗 Links
-
-- [GitHub Repository](https://github.com/aindreyway/aindreyway-mcp-codex-keeper)
-- [Issue Tracker](https://github.com/aindreyway/aindreyway-mcp-codex-keeper/issues)
-- [MCP Documentation](https://modelcontextprotocol.io)
 
 ## 👤 Author
 
@@ -99,6 +89,6 @@ MIT License - feel free to use this in your projects!
 
 - GitHub: [@aindreyway](https://github.com/aindreyway)
 
-## ⭐️ Show your support
+## ⭐️ Support
 
 Give a ⭐️ if this project helped you!
