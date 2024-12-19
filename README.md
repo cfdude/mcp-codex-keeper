@@ -12,13 +12,15 @@ Just tell your Cline/Sonnet assistant to add this to the configuration:
 
 ```json
 "aindreyway-codex-keeper": {
-  "command": "uvx",
-  "args": ["aindreyway-mcp-codex-keeper"],
+  "command": "npx",
+  "args": ["-y", "aindreyway-mcp-codex-keeper@latest"],
   "disabled": false
 }
 ```
 
 That's it! The assistant will handle everything automatically.
+
+> **Note:** This server uses `npx` for direct npm package execution, which is optimal for Node.js/TypeScript MCP servers. While some MCP servers use `uvx` (Python-based), we chose `npx` for better integration with the npm ecosystem and TypeScript tooling.
 
 ## 🎯 What Your Assistant Can Do
 
