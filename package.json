@@ -1,0 +1,47 @@
+{
+  "name": "aindreyway-mcp-codex-keeper",
+  "version": "1.0.0",
+  "description": "An intelligent MCP server that serves as a guardian of development knowledge, providing Cline assistants with curated access to latest documentation and best practices",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "codex-keeper": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x build/index.js",
+    "start": "node build/index.js",
+    "dev": "tsc -w",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "documentation",
+    "cline",
+    "assistant",
+    "development",
+    "best-practices",
+    "aindreyway"
+  ],
+  "author": "aindreyway",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "axios": "^1.6.2",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aindreyway/aindreyway-mcp-codex-keeper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aindreyway/aindreyway-mcp-codex-keeper/issues"
+  },
+  "homepage": "https://github.com/aindreyway/aindreyway-mcp-codex-keeper#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
