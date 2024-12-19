@@ -1,6 +1,6 @@
 {
-  "name": "aindreyway-mcp-codex-keeper",
-  "version": "1.0.4",
+  "name": "@aindreyway/mcp-codex-keeper",
+  "version": "1.0.5",
   "description": "An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices",
   "type": "module",
   "main": "build/index.js",
@@ -38,12 +38,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aindreyway/aindreyway-mcp-codex-keeper.git"
+    "url": "git+https://github.com/aindreyway/mcp-codex-keeper.git"
   },
   "bugs": {
-    "url": "https://github.com/aindreyway/aindreyway-mcp-codex-keeper/issues"
+    "url": "https://github.com/aindreyway/mcp-codex-keeper/issues"
   },
-  "homepage": "https://github.com/aindreyway/aindreyway-mcp-codex-keeper#readme",
+  "homepage": "https://github.com/aindreyway/mcp-codex-keeper#readme",
   "engines": {
     "node": ">=18.0.0"
   }
