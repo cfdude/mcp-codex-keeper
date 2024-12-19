@@ -1,6 +1,9 @@
 import fs from 'fs/promises';
+import { createWriteStream } from 'fs';
 import path from 'path';
 import { DocSource } from '../types/index.js';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 
 /**
  * Error thrown when file system operations fail
@@ -13,12 +16,23 @@ export class FileSystemError extends Error {
 }
 
 /**
+ * Configuration for cache management
+ */
+interface CacheConfig {
+  maxSize: number; // Maximum cache size in bytes (default: 100MB)
+  maxAge: number; // Maximum age of cache files in milliseconds (default: 7 days)
+  cleanupInterval: number; // Cleanup interval in milliseconds (default: 1 hour)
+}
+
+/**
  * Manages file system operations for documentation storage
  */
 export class FileSystemManager {
   private docsPath: string;
   private sourcesFile: string;
   private cacheDir: string;
+  private cacheConfig: CacheConfig;
+  private cleanupTimer?: NodeJS.Timeout;
 
   /**
    * Creates a new FileSystemManager instance
@@ -28,6 +42,65 @@ export class FileSystemManager {
     this.docsPath = basePath;
     this.sourcesFile = path.join(this.docsPath, 'sources.json');
     this.cacheDir = path.join(this.docsPath, 'cache');
+
+    // Default cache configuration
+    this.cacheConfig = {
+      maxSize: 100 * 1024 * 1024, // 100MB
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      cleanupInterval: 60 * 60 * 1000, // 1 hour
+    };
+
+    // Start cache cleanup timer
+    this.startCleanupTimer();
+  }
+
+  /**
+   * Starts the cache cleanup timer
+   */
+  private startCleanupTimer(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupCache().catch(console.error);
+    }, this.cacheConfig.cleanupInterval);
+  }
+
+  /**
+   * Cleans up old cache files
+   */
+  private async cleanupCache(): Promise<void> {
+    try {
+      const files = await fs.readdir(this.cacheDir);
+      const now = Date.now();
+      let totalSize = 0;
+
+      // Get file stats and sort by access time
+      const fileStats = await Promise.all(
+        files.map(async file => {
+          const filePath = path.join(this.cacheDir, file);
+          const stats = await fs.stat(filePath);
+          return { file, path: filePath, stats };
+        })
+      );
+
+      fileStats.sort((a, b) => a.stats.atime.getTime() - b.stats.atime.getTime());
+
+      // Remove old files and check total size
+      for (const { file, path: filePath, stats } of fileStats) {
+        if (stats.mtimeMs < now - this.cacheConfig.maxAge) {
+          await fs.unlink(filePath);
+          continue;
+        }
+
+        totalSize += stats.size;
+        if (totalSize > this.cacheConfig.maxSize) {
+          await fs.unlink(filePath);
+        }
+      }
+    } catch (error) {
+      console.error('Cache cleanup failed:', error);
+    }
   }
 
   /**
@@ -44,7 +117,7 @@ export class FileSystemManager {
   }
 
   /**
-   * Saves documentation content to cache
+   * Saves documentation content to cache using streams
    * @param name - Documentation name
    * @param content - Content to save
    * @throws {FileSystemError} If save operation fails
@@ -53,7 +126,15 @@ export class FileSystemManager {
     try {
       const filename = this.getDocumentationFileName(name);
       await this.ensureDirectories();
-      await fs.writeFile(path.join(this.cacheDir, filename), content);
+
+      // Create a readable stream from the content
+      const readStream = Readable.from(content);
+
+      // Create a write stream to the file
+      const writeStream = createWriteStream(path.join(this.cacheDir, filename), { flags: 'w' });
+
+      // Use pipeline for proper error handling and cleanup
+      await pipeline(readStream, writeStream);
     } catch (error) {
       throw new FileSystemError(`Failed to save documentation: ${name}`, error);
     }
@@ -91,7 +172,7 @@ export class FileSystemManager {
   }
 
   /**
-   * Searches for text in cached documentation
+   * Searches for text in cached documentation using streams
    * @param name - Documentation name
    * @param searchQuery - Text to search for
    * @returns Whether the text was found
@@ -99,8 +180,17 @@ export class FileSystemManager {
   async searchInDocumentation(name: string, searchQuery: string): Promise<boolean> {
     try {
       const filename = this.getDocumentationFileName(name);
-      const content = await fs.readFile(path.join(this.cacheDir, filename), 'utf-8');
-      return content.toLowerCase().includes(searchQuery.toLowerCase());
+      const filePath = path.join(this.cacheDir, filename);
+
+      const content = await fs.readFile(filePath, 'utf-8');
+      const chunks = content.match(/.{1,1048576}/g) || []; // Split into 1MB chunks
+
+      for (const chunk of chunks) {
+        if (chunk.toLowerCase().includes(searchQuery.toLowerCase())) {
+          return true;
+        }
+      }
+      return false;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return false;
@@ -169,5 +259,23 @@ export class FileSystemManager {
    */
   getCachePath(): string {
     return this.cacheDir;
+  }
+
+  /**
+   * Updates cache configuration
+   * @param config - New cache configuration
+   */
+  updateCacheConfig(config: Partial<CacheConfig>): void {
+    this.cacheConfig = { ...this.cacheConfig, ...config };
+    this.startCleanupTimer(); // Restart timer with new interval
+  }
+
+  /**
+   * Cleanup resources
+   */
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
   }
 }

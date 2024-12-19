@@ -1,7 +1,7 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.0.8-green)
+![Version](https://img.shields.io/badge/version-1.0.9-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
@@ -74,6 +74,11 @@ The server automatically:
 - Provides intelligent search capabilities
 - Updates documentation automatically
 - Supports tagging and categorization
+- Optimizes memory usage:
+  - Uses streaming for large files
+  - Automatic cache cleanup
+  - Memory-efficient search
+  - Size and age limits for cached files
 
 ## 📝 License
 
