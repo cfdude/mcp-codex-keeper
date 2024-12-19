@@ -31,3 +31,6 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Internal documentation
+PROJECT_SUMMARY.md
