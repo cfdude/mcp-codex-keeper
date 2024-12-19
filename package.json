@@ -1,10 +1,12 @@
 {
   "name": "@aindreyway/mcp-codex-keeper",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices",
   "type": "module",
   "main": "build/index.js",
-  "bin": "./build/index.js",
+  "bin": {
+    "mcp-codex-keeper": "./build/index.js"
+  },
   "uvx": {
     "type": "mcp-server"
   },
