@@ -1,85 +1,24 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.0.3-green)
+![Version](https://img.shields.io/badge/version-1.0.4-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
 
-## 🚀 Installation Guide
+## 🚀 Quick Start
 
-### Prerequisites
+Just tell your Cline/Sonnet assistant to add this to the configuration:
 
-1. Make sure you have Node.js 18 or later installed:
-
-```bash
-node --version
-```
-
-If not installed or wrong version:
-
-- For macOS: `brew install node`
-- For Linux: Use [nvm](https://github.com/nvm-sh/nvm) or your package manager
-- For Windows: Download from [nodejs.org](https://nodejs.org/)
-
-2. Update npm to the latest version:
-
-```bash
-npm install -g npm@latest
-```
-
-### Installation Steps
-
-1. Install the MCP server package:
-
-```bash
-npm install -g aindreyway-mcp-codex-keeper
-```
-
-2. Tell your Cline assistant to add this configuration:
-
-```
-Add MCP server with this configuration:
-
-{
-  "mcpServers": {
-    "aindreyway-codex-keeper": {
-      "command": "npx",
-      "args": ["-y", "aindreyway-mcp-codex-keeper@latest"],
-      "disabled": false
-    }
-  }
+```json
+"aindreyway-codex-keeper": {
+  "command": "uvx",
+  "args": ["aindreyway-mcp-codex-keeper"],
+  "disabled": false
 }
 ```
 
-### Troubleshooting
-
-If you encounter errors:
-
-1. Fix npm permissions (if you see EACCES errors):
-
-   ```bash
-   sudo chown -R $(whoami) ~/.npm
-   ```
-
-2. Clear npm cache and reinstall:
-
-   ```bash
-   npm cache clean --force
-   npm install -g aindreyway-mcp-codex-keeper
-   ```
-
-3. Make sure your Node.js version is compatible:
-
-   ```bash
-   node --version  # Should be 18 or later
-   ```
-
-4. If you still see module errors, try:
-   ```bash
-   npm rebuild
-   npm install -g aindreyway-mcp-codex-keeper
-   ```
+That's it! The assistant will handle everything automatically.
 
 ## 🎯 What Your Assistant Can Do
 
@@ -124,7 +63,7 @@ Search through documentation with category filtering.
 - AI
 - Cloud
 
-## 🔧 Technical Details
+## 🔧 Features
 
 The server automatically:
 
