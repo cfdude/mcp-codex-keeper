@@ -1,7 +1,7 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.0.1-green)
+![Version](https://img.shields.io/badge/version-1.0.2-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
@@ -54,11 +54,32 @@ Add MCP server with this configuration:
 
 ### Troubleshooting
 
-If you encounter Node.js module errors:
+If you encounter errors:
 
-1. Clear npm cache: `npm cache clean --force`
-2. Reinstall the package: `npm install -g aindreyway-mcp-codex-keeper`
-3. Make sure your Node.js version is compatible: `node --version`
+1. Fix npm permissions (if you see EACCES errors):
+
+   ```bash
+   sudo chown -R $(whoami) ~/.npm
+   ```
+
+2. Clear npm cache and reinstall:
+
+   ```bash
+   npm cache clean --force
+   npm install -g aindreyway-mcp-codex-keeper
+   ```
+
+3. Make sure your Node.js version is compatible:
+
+   ```bash
+   node --version  # Should be 18 or later
+   ```
+
+4. If you still see module errors, try:
+   ```bash
+   npm rebuild
+   npm install -g aindreyway-mcp-codex-keeper
+   ```
 
 ## 🎯 What Your Assistant Can Do
 
