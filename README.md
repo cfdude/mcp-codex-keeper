@@ -1,7 +1,7 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.0.2-green)
+![Version](https://img.shields.io/badge/version-1.0.3-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
