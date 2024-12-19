@@ -1,6 +1,6 @@
 {
   "name": "@aindreyway/mcp-codex-keeper",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices",
   "type": "module",
   "main": "build/index.js",
@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
-    "start": "node build/index.js",
+    "start": "node --max-old-space-size=256 build/index.js",
     "dev": "tsc -w",
     "prepublishOnly": "npm run build"
   },

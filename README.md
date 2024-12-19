@@ -1,7 +1,7 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.0.10-green)
+![Version](https://img.shields.io/badge/version-1.0.11-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
@@ -13,7 +13,7 @@ Just tell your Cline/Sonnet assistant to add this to the configuration:
 ```json
 "aindreyway-codex-keeper": {
   "command": "npx",
-  "args": ["-y", "@aindreyway/mcp-codex-keeper@latest"],
+  "args": ["-y", "--node-arg=--max-old-space-size=256", "@aindreyway/mcp-codex-keeper@latest"],
   "disabled": false
 }
 ```
@@ -79,6 +79,7 @@ The server automatically:
   - Automatic cache cleanup
   - Memory-efficient search
   - Size and age limits for cached files
+  - Limited heap size (256MB)
 
 ## 📝 License
 
