@@ -38,10 +38,11 @@ Add this to your Cline/Sonnet configuration:
 ```json
 "aindreyway-codex-keeper": {
   "command": "npx",
-  "args": ["-y", "--node-arg=--max-old-space-size=256", "@aindreyway/mcp-codex-keeper@latest"],
+  "args": ["-y", "@aindreyway/mcp-codex-keeper@latest"],
   "disabled": false,
   "env": {
-    "npm_config_cache_max": "1024000000"
+    "npm_config_cache_max": "1024000000",
+    "NODE_OPTIONS": "--max-old-space-size=256"
   }
 }
 ```
