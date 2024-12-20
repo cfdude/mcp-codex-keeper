@@ -1,18 +1,15 @@
 {
   "name": "@aindreyway/mcp-codex-keeper",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices",
   "type": "module",
   "main": "build/index.js",
   "bin": {
     "mcp-codex-keeper": "build/index.js"
   },
-  "uvx": {
-    "type": "mcp-server"
-  },
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
-    "start": "node --max-old-space-size=256 build/index.js",
+    "start": "cross-env NODE_OPTIONS='--no-experimental-fetch --max-old-space-size=256' npm_config_cache_max=1024000000 node build/index.js",
     "dev": "tsc -w",
     "prepublishOnly": "npm run build"
   },
@@ -25,7 +22,7 @@
     "development",
     "best-practices",
     "aindreyway",
-    "uvx"
+    "typescript"
   ],
   "author": "aindreyway",
   "license": "MIT",
@@ -36,7 +33,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.4",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "cross-env": "^7.0.3"
   },
   "repository": {
     "type": "git",

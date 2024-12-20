@@ -1,26 +1,55 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.0.11-green)
+![Version](https://img.shields.io/badge/version-1.0.12-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
 
 ## 🚀 Quick Start
 
-Just tell your Cline/Sonnet assistant to add this to the configuration:
+### Prerequisites
+
+1. Make sure you have Node.js installed (version 18 or higher):
+
+   ```bash
+   node --version
+   ```
+
+2. Install or update npm (comes with Node.js):
+
+   ```bash
+   npm install -g npm@latest
+   ```
+
+3. Verify npx is available:
+   ```bash
+   npx --version
+   ```
+   If not found, install it:
+   ```bash
+   npm install -g npx
+   ```
+
+### Configuration
+
+Add this to your Cline/Sonnet configuration:
 
 ```json
 "aindreyway-codex-keeper": {
   "command": "npx",
   "args": ["-y", "--node-arg=--max-old-space-size=256", "@aindreyway/mcp-codex-keeper@latest"],
-  "disabled": false
+  "disabled": false,
+  "env": {
+    "NODE_OPTIONS": "--no-experimental-fetch",
+    "npm_config_cache_max": "1024000000"
+  }
 }
 ```
 
 That's it! The assistant will handle everything automatically.
 
-> **Note:** This server uses `npx` for direct npm package execution, which is optimal for Node.js/TypeScript MCP servers. While some MCP servers use `uvx` (Python-based), we chose `npx` for better integration with the npm ecosystem and TypeScript tooling.
+> **Note:** This server uses `npx` for direct npm package execution, which is optimal for Node.js/TypeScript MCP servers, providing seamless integration with the npm ecosystem and TypeScript tooling.
 
 ## 🎯 What Your Assistant Can Do
 
