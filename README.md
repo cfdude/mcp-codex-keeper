@@ -41,7 +41,6 @@ Add this to your Cline/Sonnet configuration:
   "args": ["-y", "--node-arg=--max-old-space-size=256", "@aindreyway/mcp-codex-keeper@latest"],
   "disabled": false,
   "env": {
-    "NODE_OPTIONS": "--no-experimental-fetch",
     "npm_config_cache_max": "1024000000"
   }
 }
