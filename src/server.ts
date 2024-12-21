@@ -140,7 +140,7 @@ export class DocumentationServer {
     this.server = new Server(
       {
         name: serverName,
-        version: '1.1.6',
+        version: '1.1.7',
       },
       {
         capabilities: {
