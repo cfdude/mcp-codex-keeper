@@ -4,6 +4,8 @@ import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
@@ -146,6 +148,7 @@ export class DocumentationServer {
       {
         capabilities: {
           tools: {},
+          resources: {},
         },
       }
     );
@@ -163,6 +166,7 @@ export class DocumentationServer {
     this.docs = [];
 
     this.setupToolHandlers();
+    this.setupResourceHandlers();
     this.setupErrorHandlers();
 
     // Log initial documentation state with version indicator
@@ -231,6 +235,34 @@ export class DocumentationServer {
   /**
    * Sets up tool handlers for the server
    */
+  private setupResourceHandlers(): void {
+    this.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+      resources: [
+        {
+          uri: 'docs://sources',
+          name: 'Documentation Sources',
+          description: 'List of all available documentation sources',
+          mimeType: 'application/json',
+        },
+      ],
+    }));
+
+    this.server.setRequestHandler(ReadResourceRequestSchema, async request => {
+      if (request.params.uri === 'docs://sources') {
+        return {
+          contents: [
+            {
+              uri: request.params.uri,
+              mimeType: 'application/json',
+              text: JSON.stringify(this.docs, null, 2),
+            },
+          ],
+        };
+      }
+      throw new McpError(ErrorCode.InvalidRequest, `Unknown resource: ${request.params.uri}`);
+    });
+  }
+
   private setupToolHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
@@ -405,11 +437,10 @@ export class DocumentationServer {
   private async addDocumentation(args: DocSource) {
     const { name, url, description, category, tags, version } = args;
 
-    if (this.docs.some(doc => doc.name === name)) {
-      throw new McpError(ErrorCode.InvalidRequest, `Documentation "${name}" already exists`);
-    }
+    // Find existing doc index
+    const existingIndex = this.docs.findIndex(doc => doc.name === name);
 
-    const newDoc: DocSource = {
+    const updatedDoc: DocSource = {
       name,
       url,
       description,
@@ -419,14 +450,24 @@ export class DocumentationServer {
       lastUpdated: new Date().toISOString(),
     };
 
-    this.docs.push(newDoc);
+    if (existingIndex !== -1) {
+      // Update existing doc
+      this.docs[existingIndex] = updatedDoc;
+    } else {
+      // Add new doc
+      this.docs.push(updatedDoc);
+    }
+
     await this.fsManager.saveSources(this.docs);
 
     return {
       content: [
         {
           type: 'text',
-          text: `Added documentation: ${name}`,
+          text:
+            existingIndex !== -1
+              ? `Updated documentation: ${name}`
+              : `Added documentation: ${name}`,
         },
       ],
     };

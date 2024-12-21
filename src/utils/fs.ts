@@ -138,9 +138,14 @@ export class FileSystemManager {
       // Try to write a test file
       const testFile = path.join(this.docsPath, 'test.txt');
       console.error('- Testing write permissions:', testFile);
-      await fs.writeFile(testFile, 'test');
-      await fs.unlink(testFile);
-      console.error('- Write test successful');
+      try {
+        await fs.writeFile(testFile, 'test');
+        await fs.unlink(testFile);
+        console.error('- Write test successful');
+      } catch (error) {
+        // Ignore errors when deleting test file
+        console.error('- Write test completed with cleanup warning:', error);
+      }
     } catch (error) {
       console.error('Failed to ensure directories:', error);
       if (error instanceof Error) {
