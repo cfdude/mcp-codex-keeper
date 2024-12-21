@@ -111,7 +111,11 @@ export class DocumentationServer {
     // Initialize file system manager with proper path and cache config
     const moduleURL = new URL(import.meta.url);
     const modulePath = path.dirname(moduleURL.pathname);
-    this.fsManager = new FileSystemManager(path.join(modulePath, '..', ENV.storagePath), {
+    const storagePath = this.isLocal
+      ? path.join(modulePath, '..', ENV.storagePath)
+      : path.join(process.env.HOME || process.env.USERPROFILE || '', '.mcp-codex-keeper');
+
+    this.fsManager = new FileSystemManager(storagePath, {
       maxSize: ENV.cacheMaxSize,
       maxAge: ENV.cacheMaxAge,
       cleanupInterval: ENV.cacheCleanupInterval,
