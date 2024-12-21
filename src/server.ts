@@ -104,7 +104,9 @@ export class DocumentationServer {
   private isLocal: boolean = ENV.isLocal;
 
   constructor() {
-    this.init().catch(console.error);
+    this.init()
+      .then(() => this.run())
+      .catch(console.error);
   }
 
   private async init() {
