@@ -122,6 +122,12 @@ MIT License - feel free to use this in your projects!
 
 - GitHub: [@aindreyway](https://github.com/aindreyway)
 
+## 📖 Documentation
+
+- [User Guide](README.md) - Installation and usage instructions
+- [Contributing Guide](CONTRIBUTING.md) - How to contribute to the project
+- [Technical Documentation](PROJECT_SUMMARY.md) - Detailed technical information
+
 ## ⭐️ Support
 
-Give a ⭐️ if this project helped you!
+Give a ⭐️ if this project helped you! If you want to contribute, please check our [Contributing Guide](CONTRIBUTING.md).
