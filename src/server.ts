@@ -7,6 +7,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
+import dotenv from 'dotenv';
 import path from 'path';
 import { DocCategory, DocSource } from './types/index.js';
 import { FileSystemError, FileSystemManager } from './utils/fs.js';
@@ -17,35 +18,78 @@ import {
   validateUpdateDocArgs,
 } from './validators/index.js';
 
+// Load environment variables
+dotenv.config();
+
+// Environment settings
+const ENV = {
+  isLocal: process.env.MCP_ENV === 'local',
+  storagePath: process.env.STORAGE_PATH || 'data',
+  cacheMaxSize: parseInt(process.env.CACHE_MAX_SIZE || '104857600', 10),
+  cacheMaxAge: parseInt(process.env.CACHE_MAX_AGE || '604800000', 10),
+  cacheCleanupInterval: parseInt(process.env.CACHE_CLEANUP_INTERVAL || '3600000', 10),
+};
+
 // Default documentation sources with best practices and essential references
 const defaultDocs: DocSource[] = [
+  // Core Development Standards
   {
-    name: 'TypeScript SDK Documentation',
-    url: 'https://github.com/modelcontextprotocol/typescript-sdk/blob/main/README.md',
-    description: 'Official TypeScript SDK for MCP development',
-    category: 'MCP',
-    tags: ['sdk', 'typescript', 'mcp'],
+    name: 'SOLID Principles Guide',
+    url: 'https://www.digitalocean.com/community/conceptual-articles/s-o-l-i-d-the-first-five-principles-of-object-oriented-design',
+    description: 'Comprehensive guide to SOLID principles in software development',
+    category: 'Standards',
+    tags: ['solid', 'oop', 'design-principles', 'best-practices'],
   },
   {
-    name: 'Kotlin SDK Documentation',
-    url: 'https://github.com/modelcontextprotocol/kotlin-sdk/blob/main/README.md',
-    description: 'Official Kotlin SDK for MCP, maintained by JetBrains',
-    category: 'MCP',
-    tags: ['sdk', 'kotlin', 'mcp', 'jetbrains'],
+    name: 'Design Patterns Catalog',
+    url: 'https://refactoring.guru/design-patterns/catalog',
+    description: 'Comprehensive catalog of software design patterns with examples',
+    category: 'Standards',
+    tags: ['design-patterns', 'architecture', 'best-practices', 'oop'],
   },
   {
-    name: 'React Best Practices',
-    url: 'https://react.dev/learn/thinking-in-react',
-    description: 'Official React best practices and patterns',
-    category: 'Frontend',
-    tags: ['react', 'javascript', 'frontend', 'best-practices'],
+    name: 'Clean Code Principles',
+    url: 'https://gist.github.com/wojteklu/73c6914cc446146b8b533c0988cf8d29',
+    description: 'Universal Clean Code principles for any programming language',
+    category: 'Standards',
+    tags: ['clean-code', 'best-practices', 'code-quality'],
   },
   {
-    name: 'TypeScript Handbook',
-    url: 'https://www.typescriptlang.org/docs/handbook/',
-    description: 'Official TypeScript documentation and guides',
-    category: 'Language',
-    tags: ['typescript', 'javascript', 'language'],
+    name: 'Unit Testing Principles',
+    url: 'https://martinfowler.com/bliki/UnitTest.html',
+    description: "Martin Fowler's guide to unit testing principles and practices",
+    category: 'Standards',
+    tags: ['testing', 'unit-tests', 'best-practices', 'tdd'],
+  },
+  {
+    name: 'OWASP Top Ten',
+    url: 'https://owasp.org/www-project-top-ten/',
+    description: 'Top 10 web application security risks and prevention',
+    category: 'Standards',
+    tags: ['security', 'web', 'owasp', 'best-practices'],
+  },
+  {
+    name: 'Conventional Commits',
+    url: 'https://www.conventionalcommits.org/',
+    description: 'Specification for standardized commit messages',
+    category: 'Standards',
+    tags: ['git', 'commits', 'versioning', 'best-practices'],
+  },
+  {
+    name: 'Semantic Versioning',
+    url: 'https://semver.org/',
+    description: 'Semantic Versioning Specification',
+    category: 'Standards',
+    tags: ['versioning', 'releases', 'best-practices'],
+  },
+
+  // Essential Tools
+  {
+    name: 'Git Workflow Guide',
+    url: 'https://www.atlassian.com/git/tutorials/comparing-workflows',
+    description: 'Comprehensive guide to Git workflows and team collaboration',
+    category: 'Tools',
+    tags: ['git', 'version-control', 'workflow', 'collaboration'],
   },
 ];
 
@@ -57,10 +101,25 @@ export class DocumentationServer {
   private fsManager: FileSystemManager;
   private docs: DocSource[];
 
+  private isLocal: boolean;
+
   constructor() {
+    // Use environment settings
+    this.isLocal = ENV.isLocal;
+    const serverName = this.isLocal ? 'local-mcp-codex-keeper' : 'aindreyway-mcp-codex-keeper';
+
+    // Initialize file system manager with proper path and cache config
+    const moduleURL = new URL(import.meta.url);
+    const modulePath = path.dirname(moduleURL.pathname);
+    this.fsManager = new FileSystemManager(path.join(modulePath, '..', ENV.storagePath), {
+      maxSize: ENV.cacheMaxSize,
+      maxAge: ENV.cacheMaxAge,
+      cleanupInterval: ENV.cacheCleanupInterval,
+    });
+
     this.server = new Server(
       {
-        name: 'aindreyway-mcp-codex-keeper',
+        name: serverName,
         version: '1.0.0',
       },
       {
@@ -70,14 +129,62 @@ export class DocumentationServer {
       }
     );
 
-    // Initialize file system manager with proper path
-    const moduleURL = new URL(import.meta.url);
-    const modulePath = path.dirname(moduleURL.pathname);
-    this.fsManager = new FileSystemManager(path.join(modulePath, '..', 'data'));
-    this.docs = defaultDocs;
+    if (this.isLocal) {
+      console.error('\n' + '='.repeat(50));
+      console.error('🔧 RUNNING IN LOCAL DEVELOPMENT MODE');
+      console.error('Server name: local-codex-keeper');
+      console.error('Data directory: ' + path.join(modulePath, '..', ENV.storagePath));
+      console.error('To run production version use: npx @aindreyway/mcp-codex-keeper');
+      console.error('='.repeat(50) + '\n');
+    }
+
+    // Initialize with empty array, will be populated in run()
+    this.docs = [];
 
     this.setupToolHandlers();
     this.setupErrorHandlers();
+
+    // Log initial documentation state with version indicator
+    console.error(
+      `Available Documentation Categories ${
+        this.isLocal ? '[LOCAL VERSION]' : '[PRODUCTION VERSION]'
+      }:`
+    );
+    const categories = [...new Set(this.docs.map(doc => doc.category))];
+    categories.forEach(category => {
+      const docsInCategory = this.docs.filter(doc => doc.category === category);
+      console.error(`\n${category}:`);
+      docsInCategory.forEach(doc => {
+        console.error(`- ${doc.name}`);
+        console.error(`  ${doc.description}`);
+        console.error(`  Tags: ${doc.tags?.join(', ') || 'none'}`);
+      });
+    });
+  }
+
+  /**
+   * Get initial documentation state
+   * This information will be available in the environment details
+   * when the server starts
+   */
+  private getInitialState(): string {
+    const categories = [...new Set(this.docs.map(doc => doc.category))];
+    let state = 'Documentation Overview:\n\n';
+
+    categories.forEach(category => {
+      const docsInCategory = this.docs.filter(doc => doc.category === category);
+      state += `${category}:\n`;
+      docsInCategory.forEach(doc => {
+        state += `- ${doc.name}\n`;
+        state += `  ${doc.description}\n`;
+        if (doc.tags?.length) {
+          state += `  Tags: ${doc.tags.join(', ')}\n`;
+        }
+        state += '\n';
+      });
+    });
+
+    return state;
   }
 
   /**
@@ -108,7 +215,8 @@ export class DocumentationServer {
       tools: [
         {
           name: 'list_documentation',
-          description: 'List all available documentation sources',
+          description:
+            'List all available documentation sources. Use this tool to discover relevant documentation before starting tasks to ensure best practices and standards compliance.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -125,7 +233,8 @@ export class DocumentationServer {
         },
         {
           name: 'add_documentation',
-          description: 'Add a new documentation source',
+          description:
+            'Add a new documentation source. When working on tasks, add any useful documentation you discover to help maintain a comprehensive knowledge base.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -160,7 +269,8 @@ export class DocumentationServer {
         },
         {
           name: 'update_documentation',
-          description: 'Update documentation content from source',
+          description:
+            'Update documentation content from source. Always update relevant documentation before starting a task to ensure you have the latest information and best practices.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -178,7 +288,8 @@ export class DocumentationServer {
         },
         {
           name: 'search_documentation',
-          description: 'Search through documentation content',
+          description:
+            'Search through documentation content. Use this to find specific information, best practices, or guidelines relevant to your current task. Remember to check documentation before making important decisions.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -196,6 +307,21 @@ export class DocumentationServer {
               },
             },
             required: ['query'],
+          },
+        },
+        {
+          name: 'remove_documentation',
+          description:
+            'Remove a documentation source. Use this when you no longer need specific documentation.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Name of the documentation to remove',
+              },
+            },
+            required: ['name'],
           },
         },
       ],
@@ -218,6 +344,8 @@ export class DocumentationServer {
             return this.updateDocumentation(validateUpdateDocArgs(args));
           case 'search_documentation':
             return this.searchDocumentation(validateSearchDocArgs(args));
+          case 'remove_documentation':
+            return this.removeDocumentation(args.name as string);
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
         }
@@ -386,22 +514,90 @@ export class DocumentationServer {
    * Starts the server
    */
   async run() {
-    await this.fsManager.ensureDirectories();
+    console.error('\nStarting server...');
 
     try {
+      console.error('Ensuring directories...');
+      await this.fsManager.ensureDirectories();
+      console.error('Directories ensured');
+
+      console.error('\nLoading documentation sources...');
       const savedDocs = await this.fsManager.loadSources();
-      if (savedDocs.length > 0) {
-        this.docs = savedDocs;
+      console.error('Loaded docs:', savedDocs.length);
+
+      if (savedDocs.length === 0) {
+        console.error('\nFirst time setup - initializing with default documentation...');
+        console.error('Default docs count:', defaultDocs.length);
+        console.error('Default docs categories:', [...new Set(defaultDocs.map(d => d.category))]);
+        console.error('Default docs:', JSON.stringify(defaultDocs, null, 2).slice(0, 200) + '...');
+
+        this.docs = [...defaultDocs];
+        console.error('\nSaving default docs...');
+        try {
+          await this.fsManager.saveSources(this.docs);
+          console.error('Default docs saved successfully');
+        } catch (error) {
+          console.error('Failed to save default docs:', error);
+          if (error instanceof Error) {
+            console.error('Error details:', error.message);
+            console.error('Stack trace:', error.stack);
+          }
+          throw error;
+        }
       } else {
-        await this.fsManager.saveSources(this.docs);
+        console.error('\nUsing existing docs');
+        console.error('Categories:', [...new Set(savedDocs.map(d => d.category))]);
+        console.error('Docs:', JSON.stringify(savedDocs, null, 2).slice(0, 200) + '...');
+        this.docs = savedDocs;
       }
     } catch (error) {
-      console.error('Failed to load saved documentation sources:', error);
+      console.error('\nError during initialization:', error);
+      console.error('Error details:', error instanceof Error ? error.message : String(error));
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+
+      console.error('\nFalling back to default docs');
+      this.docs = [...defaultDocs];
+
+      console.error('Saving default docs as fallback...');
       await this.fsManager.saveSources(this.docs);
+      console.error('Fallback docs saved');
     }
+
+    // Log initial state before starting server
+    console.error(
+      `\nInitial Documentation State ${this.isLocal ? '[LOCAL VERSION]' : '[PRODUCTION VERSION]'}:`
+    );
+    console.error(this.getInitialState());
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('Documentation MCP server running on stdio');
+    console.error(
+      `Documentation MCP server running on stdio ${
+        this.isLocal ? '[LOCAL VERSION]' : '[PRODUCTION VERSION]'
+      }`
+    );
+  }
+
+  /**
+   * Removes documentation source
+   */
+  private async removeDocumentation(name: string) {
+    const index = this.docs.findIndex(doc => doc.name === name);
+    if (index === -1) {
+      throw new McpError(ErrorCode.InvalidRequest, `Documentation "${name}" not found`);
+    }
+
+    // Remove from memory and storage
+    this.docs.splice(index, 1);
+    await this.fsManager.saveSources(this.docs);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Removed documentation: ${name}`,
+        },
+      ],
+    };
   }
 }

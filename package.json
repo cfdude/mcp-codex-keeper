@@ -9,9 +9,10 @@
   },
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
-    "start": "cross-env NODE_OPTIONS='--no-experimental-fetch --max-old-space-size=256' npm_config_cache_max=1024000000 node build/index.js",
+    "start": "cross-env NODE_OPTIONS='--max-old-space-size=256' npm_config_cache_max=1024000000 node build/index.js",
     "dev": "tsc -w",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "local": "cross-env NODE_OPTIONS='--max-old-space-size=256' MCP_ENV=local npm_config_cache_max=1024000000 node build/index.js"
   },
   "keywords": [
     "mcp",
@@ -29,12 +30,13 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",
     "axios": "^1.6.2",
+    "dotenv": "16.4.7",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@types/node": "^20.10.4",
-    "typescript": "^5.3.3",
-    "cross-env": "^7.0.3"
+    "cross-env": "^7.0.3",
+    "typescript": "^5.3.3"
   },
   "repository": {
     "type": "git",

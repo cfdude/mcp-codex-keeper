@@ -3,19 +3,15 @@
  * @description Defines all available documentation categories
  */
 export type DocCategory =
-  | 'Frontend'
-  | 'Backend'
-  | 'Language'
-  | 'MCP'
-  | 'MCP-Guide'
-  | 'Database'
-  | 'DevOps'
-  | 'Security'
-  | 'Testing'
-  | 'Architecture'
-  | 'Mobile'
-  | 'AI'
-  | 'Cloud';
+  | 'Languages' // Programming languages documentation
+  | 'Frameworks' // Framework documentation
+  | 'Libraries' // Library documentation
+  | 'Tools' // Development tools documentation
+  | 'APIs' // API documentation
+  | 'Guides' // Tutorial and how-to guides
+  | 'Reference' // Technical reference documentation
+  | 'Standards' // Programming standards and specifications
+  | 'Other'; // Other documentation types
 
 /**
  * Documentation source structure

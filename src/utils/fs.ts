@@ -1,9 +1,9 @@
 import fs from 'fs/promises';
 import { createWriteStream } from 'fs';
 import path from 'path';
-import { DocSource } from '../types/index.js';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
+import { DocSource } from '../types/index.js';
 
 /**
  * Error thrown when file system operations fail
@@ -38,17 +38,28 @@ export class FileSystemManager {
    * Creates a new FileSystemManager instance
    * @param basePath - Base path for storing documentation
    */
-  constructor(basePath: string) {
-    this.docsPath = basePath;
-    this.sourcesFile = path.join(this.docsPath, 'sources.json');
-    this.cacheDir = path.join(this.docsPath, 'cache');
-
-    // Default cache configuration
-    this.cacheConfig = {
+  constructor(
+    basePath: string,
+    cacheConfig: CacheConfig = {
       maxSize: 100 * 1024 * 1024, // 100MB
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       cleanupInterval: 60 * 60 * 1000, // 1 hour
-    };
+    }
+  ) {
+    // Ensure absolute path
+    this.docsPath = path.resolve(basePath);
+    this.sourcesFile = path.join(this.docsPath, 'sources.json');
+    this.cacheDir = path.join(this.docsPath, 'cache');
+
+    // Log paths for debugging
+    console.error('\nFileSystemManager paths:');
+    console.error('- Base path:', this.docsPath);
+    console.error('- Sources file:', this.sourcesFile);
+    console.error('- Cache directory:', this.cacheDir);
+    console.error('- Current working directory:', process.cwd());
+
+    // Use provided cache configuration
+    this.cacheConfig = cacheConfig;
 
     // Start cache cleanup timer
     this.startCleanupTimer();
@@ -109,9 +120,33 @@ export class FileSystemManager {
    */
   async ensureDirectories(): Promise<void> {
     try {
+      console.error('\nEnsuring directories:');
+      console.error('- Creating docs path:', this.docsPath);
       await fs.mkdir(this.docsPath, { recursive: true });
+
+      const docsStats = await fs.stat(this.docsPath);
+      console.error('- Docs path created:', docsStats.isDirectory());
+      console.error('- Docs path permissions:', docsStats.mode.toString(8));
+
+      console.error('- Creating cache dir:', this.cacheDir);
       await fs.mkdir(this.cacheDir, { recursive: true });
+
+      const cacheStats = await fs.stat(this.cacheDir);
+      console.error('- Cache dir created:', cacheStats.isDirectory());
+      console.error('- Cache dir permissions:', cacheStats.mode.toString(8));
+
+      // Try to write a test file
+      const testFile = path.join(this.docsPath, 'test.txt');
+      console.error('- Testing write permissions:', testFile);
+      await fs.writeFile(testFile, 'test');
+      await fs.unlink(testFile);
+      console.error('- Write test successful');
     } catch (error) {
+      console.error('Failed to ensure directories:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
+        console.error('Stack trace:', error.stack);
+      }
       throw new FileSystemError('Failed to create required directories', error);
     }
   }
@@ -147,9 +182,38 @@ export class FileSystemManager {
    */
   async saveSources(docs: DocSource[]): Promise<void> {
     try {
+      console.error('\nSaving sources:');
+      console.error('- Path:', this.sourcesFile);
+      console.error('- Docs count:', docs.length);
+      console.error('- Content:', JSON.stringify(docs, null, 2));
+
       await this.ensureDirectories();
-      await fs.writeFile(this.sourcesFile, JSON.stringify(docs, null, 2));
+      console.error('- Directories ensured');
+
+      // Write directly using fs.writeFile
+      await fs.writeFile(this.sourcesFile, JSON.stringify(docs, null, 2), { mode: 0o666 });
+      console.error('- File written');
+
+      // Verify file was created
+      const exists = await fs
+        .access(this.sourcesFile)
+        .then(() => true)
+        .catch(() => false);
+      console.error('- File exists:', exists);
+
+      if (exists) {
+        const stats = await fs.stat(this.sourcesFile);
+        console.error('- File size:', stats.size, 'bytes');
+        console.error('- File permissions:', stats.mode.toString(8));
+        const content = await fs.readFile(this.sourcesFile, 'utf-8');
+        console.error('- File content:', content);
+      } else {
+        throw new Error('File was not created');
+      }
     } catch (error) {
+      console.error('Failed to save sources:', error);
+      console.error('Error details:', error instanceof Error ? error.message : String(error));
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
       throw new FileSystemError('Failed to save documentation sources', error);
     }
   }
@@ -161,13 +225,34 @@ export class FileSystemManager {
    */
   async loadSources(): Promise<DocSource[]> {
     try {
-      const content = await fs.readFile(this.sourcesFile, 'utf-8');
-      return JSON.parse(content);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.error('\nLoading sources:');
+      console.error('- Path:', this.sourcesFile);
+
+      await this.ensureDirectories();
+      console.error('- Directories ensured');
+
+      const exists = await fs
+        .access(this.sourcesFile)
+        .then(() => true)
+        .catch(() => false);
+      console.error('- File exists:', exists);
+
+      if (!exists) {
+        console.error('- No sources file found, returning empty array');
         return [];
       }
-      throw new FileSystemError('Failed to load documentation sources', error);
+
+      const content = await fs.readFile(this.sourcesFile, 'utf-8');
+      console.error('- File content length:', content.length);
+
+      const docs = JSON.parse(content);
+      console.error('- Parsed docs count:', docs.length);
+
+      return docs;
+    } catch (error) {
+      console.error('Error loading sources:', error);
+      console.error('Error details:', error instanceof Error ? error.message : String(error));
+      return [];
     }
   }
 

@@ -16,19 +16,15 @@ export function isValidCategory(category: unknown): category is DocCategory {
   return (
     typeof category === 'string' &&
     [
-      'Frontend',
-      'Backend',
-      'Language',
-      'MCP',
-      'MCP-Guide',
-      'Database',
-      'DevOps',
-      'Security',
-      'Testing',
-      'Architecture',
-      'Mobile',
-      'AI',
-      'Cloud',
+      'Languages',
+      'Frameworks',
+      'Libraries',
+      'Tools',
+      'APIs',
+      'Guides',
+      'Reference',
+      'Standards',
+      'Other',
     ].includes(category)
   );
 }
