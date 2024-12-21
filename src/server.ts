@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import fs from 'fs/promises';
 import path from 'path';
 import { DocCategory, DocSource } from './types/index.js';
 import { FileSystemError, FileSystemManager } from './utils/fs.js';
@@ -97,13 +98,16 @@ const defaultDocs: DocSource[] = [
  * Main server class for the documentation keeper
  */
 export class DocumentationServer {
-  private server: Server;
-  private fsManager: FileSystemManager;
-  private docs: DocSource[];
-
-  private isLocal: boolean;
+  private server!: Server;
+  private fsManager!: FileSystemManager;
+  private docs: DocSource[] = [];
+  private isLocal: boolean = ENV.isLocal;
 
   constructor() {
+    this.init().catch(console.error);
+  }
+
+  private async init() {
     // Use environment settings
     this.isLocal = ENV.isLocal;
     const serverName = this.isLocal ? 'local-mcp-codex-keeper' : 'aindreyway-mcp-codex-keeper';
@@ -114,6 +118,16 @@ export class DocumentationServer {
     const storagePath = this.isLocal
       ? path.join(modulePath, '..', ENV.storagePath)
       : path.join(process.env.HOME || process.env.USERPROFILE || '', '.mcp-codex-keeper');
+
+    // Create storage directory in production mode
+    if (!this.isLocal) {
+      try {
+        await fs.mkdir(storagePath, { recursive: true });
+        console.error('Created storage directory:', storagePath);
+      } catch (error) {
+        console.error('Failed to create storage directory:', error);
+      }
+    }
 
     this.fsManager = new FileSystemManager(storagePath, {
       maxSize: ENV.cacheMaxSize,
