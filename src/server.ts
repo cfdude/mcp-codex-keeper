@@ -23,7 +23,7 @@ dotenv.config();
 
 // Environment settings
 const ENV = {
-  isLocal: process.env.MCP_ENV === 'local',
+  isLocal: process.env.MCP_ENV === 'local' && process.env.NODE_ENV !== 'production',
   storagePath: process.env.STORAGE_PATH || 'data',
   cacheMaxSize: parseInt(process.env.CACHE_MAX_SIZE || '104857600', 10),
   cacheMaxAge: parseInt(process.env.CACHE_MAX_AGE || '604800000', 10),
