@@ -7,7 +7,6 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
-import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { DocCategory, DocSource } from './types/index.js';
@@ -19,16 +18,20 @@ import {
   validateUpdateDocArgs,
 } from './validators/index.js';
 
-// Load environment variables
-dotenv.config();
-
-// Environment settings
+// Environment settings from MCP configuration
 const ENV = {
   isLocal: process.env.MCP_ENV === 'local' && process.env.NODE_ENV !== 'production',
-  storagePath: process.env.STORAGE_PATH || 'data',
-  cacheMaxSize: parseInt(process.env.CACHE_MAX_SIZE || '104857600', 10),
-  cacheMaxAge: parseInt(process.env.CACHE_MAX_AGE || '604800000', 10),
-  cacheCleanupInterval: parseInt(process.env.CACHE_CLEANUP_INTERVAL || '3600000', 10),
+  cacheMaxSize: 104857600, // 100MB
+  cacheMaxAge: 604800000, // 7 days
+  cacheCleanupInterval: 3600000, // 1 hour
+  storagePath: 'data', // Default storage path for local development
+};
+
+// Storage paths
+const STORAGE_PATHS = {
+  local: (modulePath: string) => path.join(modulePath, '..', ENV.storagePath),
+  production: () =>
+    path.join(process.env.HOME || process.env.USERPROFILE || '', '.mcp-codex-keeper'),
 };
 
 // Default documentation sources with best practices and essential references
@@ -114,12 +117,10 @@ export class DocumentationServer {
     this.isLocal = ENV.isLocal;
     const serverName = this.isLocal ? 'local-mcp-codex-keeper' : 'aindreyway-mcp-codex-keeper';
 
-    // Initialize file system manager with proper path and cache config
+    // Get storage path based on mode
     const moduleURL = new URL(import.meta.url);
     const modulePath = path.dirname(moduleURL.pathname);
-    const storagePath = this.isLocal
-      ? path.join(modulePath, '..', ENV.storagePath)
-      : path.join(process.env.HOME || process.env.USERPROFILE || '', '.mcp-codex-keeper');
+    const storagePath = this.isLocal ? STORAGE_PATHS.local(modulePath) : STORAGE_PATHS.production();
 
     // Create storage directory in production mode
     if (!this.isLocal) {

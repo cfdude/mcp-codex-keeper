@@ -16,7 +16,7 @@
     "update-version": "node scripts/update-version.js",
     "version": "npm run update-version && git add -A",
     "postversion": "git push && git push --tags",
-    "deploy": "npm run build && git add . && npm version patch && npm publish --access public && git push --tags && git push"
+    "deploy": "npm run build && git add . && git commit -m \"chore: prepare for release\" && npm version patch && npm publish --access public && git push --tags && git push"
   },
   "keywords": [
     "mcp",
@@ -34,7 +34,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",
     "axios": "^1.6.2",
-    "dotenv": "16.4.7",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
