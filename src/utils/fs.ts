@@ -46,8 +46,8 @@ export class FileSystemManager {
       cleanupInterval: 60 * 60 * 1000, // 1 hour
     }
   ) {
-    // Ensure absolute path
-    this.docsPath = path.resolve(basePath);
+    // Ensure absolute path and decode URL-encoded characters
+    this.docsPath = decodeURIComponent(path.resolve(basePath));
     this.sourcesFile = path.join(this.docsPath, 'sources.json');
     this.cacheDir = path.join(this.docsPath, 'cache');
 
