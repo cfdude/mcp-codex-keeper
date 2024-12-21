@@ -12,7 +12,11 @@
     "start": "cross-env NODE_OPTIONS='--max-old-space-size=256' npm_config_cache_max=1024000000 node build/index.js",
     "dev": "tsc -w",
     "prepublishOnly": "npm run build",
-    "local": "cross-env NODE_OPTIONS='--max-old-space-size=256' MCP_ENV=local npm_config_cache_max=1024000000 node build/index.js"
+    "local": "cross-env NODE_OPTIONS='--max-old-space-size=256' MCP_ENV=local npm_config_cache_max=1024000000 node build/index.js",
+    "update-version": "node scripts/update-version.js",
+    "version": "npm run update-version && git add -A",
+    "postversion": "git push && git push --tags",
+    "deploy": "npm run build && git add . && npm version patch && npm publish --access public && git push --tags && git push"
   },
   "keywords": [
     "mcp",
