@@ -1,6 +1,7 @@
 import 'jest-extended';
 import { mockDeep, mockReset } from 'jest-mock-extended';
 import { logger } from '../../utils/logger.js';
+import { Worker, MessagePort, WorkerOptions } from 'worker_threads';
 
 // Define types for handles and workers
 interface WorkerHandle {
@@ -9,6 +10,12 @@ interface WorkerHandle {
   destroy?: () => void;
   unref?: () => void;
   removeAllListeners?: () => void;
+  startTime: number;  // Changed from optional to required
+  threadId?: number;
+  getState?: () => string;
+  isRunning?: boolean;
+  exitCode?: number | null;  // Added null as possible value
+  _state?: string;
 }
 
 // Define types for process._getActiveHandles
@@ -56,9 +63,6 @@ global.console = {
   error: jest.fn(),
 };
 
-// Import required modules
-import { Worker, MessagePort } from 'worker_threads';
-
 // Define types for tracking
 type TrackedWorker = Worker & {
   terminate(): void;
@@ -73,16 +77,27 @@ const activeWorkers = new Set<TrackedWorker>();
 
 // Monkey patch worker_threads to track workers
 try {
-  const worker_threads = require('worker_threads');
-  const originalWorker = worker_threads.Worker;
-  worker_threads.Worker = function (...args: ConstructorParameters<typeof Worker>) {
-    const worker = new originalWorker(...args) as TrackedWorker;
+  const { Worker: OriginalWorker } = await import('worker_threads');
+  
+  // Create a tracked worker factory function
+  const createTrackedWorker = (filename: string | URL, options?: WorkerOptions): TrackedWorker => {
+    const worker = new OriginalWorker(filename, options) as TrackedWorker;
     activeWorkers.add(worker);
     worker.on('exit', () => {
       activeWorkers.delete(worker);
     });
     return worker;
   };
+
+  // Create a proxy to intercept Worker constructor calls
+  const WorkerProxy = new Proxy(OriginalWorker, {
+    construct(target, args) {
+      return createTrackedWorker(args[0] as string | URL, args[1] as WorkerOptions);
+    }
+  });
+
+  // Replace the Worker constructor
+  const worker_threads = { Worker: WorkerProxy };
 } catch (error) {
   console.warn('Failed to patch worker_threads:', error instanceof Error ? error.message : String(error));
 }
@@ -300,18 +315,13 @@ afterEach(async () => {
           ?.filter(handle => {
             // Only cleanup workers that are marked as completed or errored
             if (handle?.constructor?.name === 'Worker') {
-              const worker = handle as WorkerHandle & { 
-                threadId?: number; 
-                getState?: () => string; 
-                isRunning?: boolean;
-                exitCode?: number;
-                _state?: string;
-              };
+              // Initialize worker with required properties
+              const worker = {
+                ...handle,
+                startTime: (handle as any).startTime || Date.now()
+              } as WorkerHandle;
               
               // Enhanced state checking with multiple indicators and forced cleanup
-              if (!worker.startTime) {
-                worker.startTime = Date.now();
-              }
               const workerState = worker.getState?.() || worker._state;
               const isExited = worker.exitCode !== undefined && worker.exitCode !== null;
               const isStopped = workerState === 'stopped' || workerState === 'errored' || workerState === 'terminated';
@@ -328,7 +338,6 @@ afterEach(async () => {
               }
               
               return isExited || isStopped || isNotRunning || hasBeenRunningTooLong;
-              return isExited || isStopped || isNotRunning;
             }
             return false;
           }) || []) as WorkerHandle[];
