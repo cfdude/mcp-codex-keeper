@@ -41,14 +41,27 @@ describe('ExternalDocsManager', () => {
   });
 
   beforeEach(async () => {
-    testDir = path.join(process.cwd(), 'test-data', `test-docs-${Date.now()}`);
+    const testInstanceId = Math.random().toString(36).slice(2);
+    const processId = process.pid;
+    testDir = path.join(process.cwd(), 'test-data', `test-docs-${Date.now()}-${testInstanceId}-${processId}`);
     await fs.mkdir(testDir, { recursive: true });
-    manager = new ExternalDocsManager(testDir, {
-      enabled: false, // Disable automatic backups for tests
-      interval: 1000,
-      maxBackups: 3,
-      path: 'backups',
-    });
+    
+    // Add timeout for manager creation
+    try {
+      const result = await Promise.race([
+        Promise.resolve(new ExternalDocsManager(testDir, {
+          enabled: false, // Disable automatic backups for tests
+          interval: 1000,
+          maxBackups: 3,
+          path: path.join('backups', testInstanceId),
+        })),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Manager creation timeout')), 5000))
+      ]);
+      manager = result as ExternalDocsManager;
+    } catch (error) {
+      console.error('Failed to create ExternalDocsManager:', error);
+      throw error;
+    }
   });
 
   afterEach(async () => {

@@ -300,12 +300,34 @@ afterEach(async () => {
           ?.filter(handle => {
             // Only cleanup workers that are marked as completed or errored
             if (handle?.constructor?.name === 'Worker') {
-              const worker = handle as WorkerHandle & { threadId?: number; getState?: () => string; isRunning?: boolean };
-              // Enhanced state checking for safer cleanup
-              const workerState = worker.getState?.();
-              const isExited = (worker as any).exitCode !== undefined && (worker as any).exitCode !== null;
-              const isStopped = workerState === 'stopped' || workerState === 'errored';
+              const worker = handle as WorkerHandle & { 
+                threadId?: number; 
+                getState?: () => string; 
+                isRunning?: boolean;
+                exitCode?: number;
+                _state?: string;
+              };
+              
+              // Enhanced state checking with multiple indicators and forced cleanup
+              if (!worker.startTime) {
+                worker.startTime = Date.now();
+              }
+              const workerState = worker.getState?.() || worker._state;
+              const isExited = worker.exitCode !== undefined && worker.exitCode !== null;
+              const isStopped = workerState === 'stopped' || workerState === 'errored' || workerState === 'terminated';
               const isNotRunning = worker.isRunning === false;
+              const hasBeenRunningTooLong = Date.now() - worker.startTime > 30000; // 30 seconds max
+              
+              if (hasBeenRunningTooLong) {
+                console.warn(`Force cleaning up long-running worker ${worker.threadId}`);
+                try {
+                  worker.terminate?.();
+                } catch (error) {
+                  console.warn(`Failed to terminate worker ${worker.threadId}:`, error);
+                }
+              }
+              
+              return isExited || isStopped || isNotRunning || hasBeenRunningTooLong;
               return isExited || isStopped || isNotRunning;
             }
             return false;

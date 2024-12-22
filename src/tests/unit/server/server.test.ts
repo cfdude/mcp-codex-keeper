@@ -24,15 +24,17 @@ describe('DocumentationServer', () => {
 
   beforeEach(async () => {
     // Create temp test directory with unique instance ID
+    const testInstanceId = Math.random().toString(36).slice(2);
     testDir = path.join(
       os.tmpdir(),
-      `mcp-codex-keeper-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `mcp-codex-keeper-test-${Date.now()}-${testInstanceId}`
     );
     await fs.mkdir(testDir, { recursive: true });
 
     // Set environment variables for testing with unique instance
     process.env.MCP_ENV = 'local';
     process.env.STORAGE_PATH = testDir;
+    process.env.TEST_INSTANCE_ID = testInstanceId;
     process.env.TEST_INSTANCE_ID = Math.random().toString(36).slice(2);
   });
 
