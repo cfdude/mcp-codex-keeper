@@ -324,7 +324,7 @@ export class TestServer {
           }
           
           // Wait for any immediate operations
-          await new Promise(resolve => setImmediate(resolve));
+          await new Promise<void>(resolve => setImmediate(resolve));
           
           // Then destroy handles
           for (const handle of handles) {
@@ -350,14 +350,24 @@ export class TestServer {
               // Wait for immediate operations
               await new Promise<void>(r => setTimeout(r, 1000));
               
-              // Final check for worker threads
+              // Final check for worker threads that are safe to cleanup
               const remainingWorkers = (process._getActiveHandles?.()
-                ?.filter(handle => 
-                  handle?.constructor?.name === 'Worker'
-                ) || []) as WorkerHandle[];
+                ?.filter(handle => {
+                  // Only cleanup workers that are marked as completed or errored
+                  if (handle?.constructor?.name === 'Worker') {
+                    const worker = handle as WorkerHandle & { threadId?: number; getState?: () => string; isRunning?: boolean };
+                    // Check if worker is in a state safe for cleanup
+                    const workerState = worker.getState?.();
+                    return workerState === 'stopped' || workerState === 'errored' || worker.isRunning === false;
+                  }
+                  return false;
+                }) || []) as WorkerHandle[];
                 
               for (const worker of remainingWorkers) {
                 try {
+                  // Give workers a chance to cleanup gracefully
+                  await new Promise<void>(resolve => setTimeout(resolve, 100));
+                  
                   if (worker.terminate) {
                     await worker.terminate();
                   } else if (worker.destroy) {
@@ -365,7 +375,8 @@ export class TestServer {
                   }
                 } catch (error) {
                   logger.warn('Failed to terminate worker in final check', {
-                    error: error instanceof Error ? error : new Error(String(error))
+                    error: error instanceof Error ? error : new Error(String(error)),
+                    workerId: (worker as any).threadId
                   });
                 }
               }
