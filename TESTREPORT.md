@@ -121,29 +121,6 @@
     at Object.<anonymous> (/home/ubuntu/repos/mcp-codex-keeper/src/tests/integration/api/documentation-server.test.ts:13:14)
   ```
 
-## src/tests/unit/utils/fs.test.ts
-
-
-### ❌ Failed Tests
-
-- FileSystemManager updateDocumentation should handle non-URL content correctly
-  ```
-  Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeUndefined[2m()[22m
-
-Received: [31m{}[39m
-    at Object.<anonymous> (/home/ubuntu/repos/mcp-codex-keeper/src/tests/unit/utils/fs.test.ts:207:37)
-  ```
-
-
-### ✅ Passed Tests
-
-- FileSystemManager File Path Handling should handle valid file names
-- FileSystemManager File Path Handling should prevent path traversal
-- FileSystemManager File Path Handling should handle non-printable characters
-- FileSystemManager searchInDocumentation should find matches with context
-- FileSystemManager searchInDocumentation should return empty array for no matches
-- FileSystemManager searchInDocumentation should handle case-insensitive search
-- FileSystemManager updateDocumentation should handle URL content with eTag and lastModified
 ## src/tests/unit/server/server.test.ts
 
 
@@ -248,6 +225,29 @@ Received: [31m{}[39m
     at Object.<anonymous> (/home/ubuntu/repos/mcp-codex-keeper/src/tests/unit/server/server.test.ts:232:16)
   ```
 
+## src/tests/unit/utils/fs.test.ts
+
+
+### ❌ Failed Tests
+
+- FileSystemManager updateDocumentation should handle non-URL content correctly
+  ```
+  Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeUndefined[2m()[22m
+
+Received: [31m{}[39m
+    at Object.<anonymous> (/home/ubuntu/repos/mcp-codex-keeper/src/tests/unit/utils/fs.test.ts:207:37)
+  ```
+
+
+### ✅ Passed Tests
+
+- FileSystemManager File Path Handling should handle valid file names
+- FileSystemManager File Path Handling should prevent path traversal
+- FileSystemManager File Path Handling should handle non-printable characters
+- FileSystemManager searchInDocumentation should find matches with context
+- FileSystemManager searchInDocumentation should return empty array for no matches
+- FileSystemManager searchInDocumentation should handle case-insensitive search
+- FileSystemManager updateDocumentation should handle URL content with eTag and lastModified
 ## src/tests/unit/validators/validators.test.ts
 
 
@@ -408,14 +408,14 @@ Received: [31m"Version [7m1[27m"[39m
 
 - ExternalDocsManager Backup Management should maintain maximum number of backups
   ```
-  Error: ENOENT: no such file or directory, scandir '/home/ubuntu/repos/mcp-codex-keeper/test-data/test-docs-1734878578747/backups'
+  Error: ENOENT: no such file or directory, scandir '/home/ubuntu/repos/mcp-codex-keeper/test-data/test-docs-1734878601797/backups'
     at Object.readdir (node:internal/fs/promises:950:18)
     at Object.<anonymous> (/home/ubuntu/repos/mcp-codex-keeper/src/tests/unit/utils/external-docs-manager.test.ts:174:23)
   ```
 
 - ExternalDocsManager Backup Management should handle backup restoration by timestamp
   ```
-  Error: ENOENT: no such file or directory, scandir '/home/ubuntu/repos/mcp-codex-keeper/test-data/test-docs-1734878579334/backups'
+  Error: ENOENT: no such file or directory, scandir '/home/ubuntu/repos/mcp-codex-keeper/test-data/test-docs-1734878602375/backups'
     at Object.readdir (node:internal/fs/promises:950:18)
     at Object.<anonymous> (/home/ubuntu/repos/mcp-codex-keeper/src/tests/unit/utils/external-docs-manager.test.ts:188:24)
   ```
@@ -717,7 +717,7 @@ Number of calls: [31m15[39m
 
 ## Summary
 
-- Duration: 15.11s
+- Duration: 14.66s
 - Total Suites: 12
 - Failed Suites: 7
 - Passed Suites: 5
@@ -726,4 +726,4 @@ Number of calls: [31m15[39m
 - Passed Tests: 131
 - Pending Tests: 0
 
-Timestamp: 2024-12-22T14:43:11.798Z
+Timestamp: 2024-12-22T14:43:34.872Z
