@@ -206,29 +206,59 @@ afterEach(async () => {
   // Enhanced cleanup strategy with active handle tracking
   const cleanupPromises = [];
   
-  // Stage 1: Handle active timers and resources
+  // Stage 1: Handle active timers and resources with concurrent operation awareness
   cleanupPromises.push(
     new Promise<void>(resolve => {
       try {
         const activeHandles = process._getActiveHandles();
+        const concurrentOperationTimeout = 5000; // Allow more time for concurrent operations
         
-        // Unref all timers to prevent them from keeping the process alive
-        activeHandles
-          .filter(handle => handle.constructor.name === 'Timeout')
-          .forEach(timer => {
-            if (typeof timer.unref === 'function') {
-              timer.unref();
+        // First identify any active worker threads
+        const activeWorkers = activeHandles.filter(handle => 
+          handle.constructor.name === 'Worker'
+        );
+        
+        // Give workers time to complete their operations
+        if (activeWorkers.length > 0) {
+          setTimeout(() => {
+            // Now safely unref timers and handles
+            activeHandles
+              .filter(handle => handle.constructor.name === 'Timeout')
+              .forEach(timer => {
+                if (typeof timer.unref === 'function') {
+                  timer.unref();
+                }
+              });
+            
+            // Unref remaining handles except active workers
+            activeHandles
+              .filter(handle => handle.constructor.name !== 'Worker')
+              .forEach(handle => {
+                if (handle && typeof handle.unref === 'function') {
+                  handle.unref();
+                }
+              });
+            
+            resolve();
+          }, concurrentOperationTimeout);
+        } else {
+          // No workers, proceed with normal cleanup
+          activeHandles
+            .filter(handle => handle.constructor.name === 'Timeout')
+            .forEach(timer => {
+              if (typeof timer.unref === 'function') {
+                timer.unref();
+              }
+            });
+          
+          activeHandles.forEach(handle => {
+            if (handle && typeof handle.unref === 'function') {
+              handle.unref();
             }
           });
-        
-        // Unref any remaining handles
-        activeHandles.forEach(handle => {
-          if (handle && typeof handle.unref === 'function') {
-            handle.unref();
-          }
-        });
-        
-        resolve();
+          
+          resolve();
+        }
       } catch (error) {
         logger.error('Error during handle cleanup:', {
           component: 'JestSetup',

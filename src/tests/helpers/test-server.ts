@@ -253,18 +253,26 @@ export class TestServer {
     // Enhanced cleanup for server resources
     afterEach(async () => {
       try {
-        // Stage 1: Stop all server operations and remove listeners
+        // Stage 1: Stop all server operations and remove listeners with concurrent operation awareness
         await new Promise<void>((resolve) => {
           const cleanup = () => {
-            server.removeAllListeners();
+            // Only remove test-specific listeners, preserve core operation listeners
+            const eventNames = server.eventNames();
+            const coreEvents = ['worker', 'message', 'error', 'exit'];
+            
+            eventNames.forEach(event => {
+              if (!coreEvents.includes(event.toString())) {
+                server.removeAllListeners(event);
+              }
+            });
             resolve();
           };
           
-          // Set a timeout for cleanup with extended duration
+          // Set a timeout for cleanup with extended duration for concurrent operations
           const timeoutId = setTimeout(() => {
             logger.warn('Server cleanup timeout reached');
             cleanup();
-          }, 10000); // Increased timeout to allow for slower cleanup
+          }, 15000); // Further increased timeout to allow for concurrent operations
 
           // Attempt cleanup
           try {
