@@ -52,9 +52,26 @@ export class TestServer {
     this.mockHandlers = new Map();
     this.resources = new Map();
     
-    // Set max listeners to avoid memory leak warnings
+    // Set max listeners to avoid memory leak warnings and ensure proper cleanup
     if (server instanceof DocumentationServer) {
       server.setMaxListeners(20);
+      
+      // Store original listeners count for cleanup
+      const originalMaxListeners = server.getMaxListeners();
+      
+      // Add cleanup hook for this test instance
+      afterEach(async () => {
+        // Reset max listeners to original value
+        server.setMaxListeners(originalMaxListeners);
+        
+        // Remove all listeners
+        server.removeAllListeners();
+        
+        // Ensure all event emitters are properly cleaned up
+        if (typeof server.cleanup === 'function') {
+          await server.cleanup();
+        }
+      });
     }
 
     // Set up MCP protocol handlers
@@ -114,14 +131,26 @@ export class TestServer {
     // Register cleanup for this test directory
     afterEach(async () => {
       try {
+        // Ensure all pending operations are complete
+        await new Promise(resolve => setImmediate(resolve));
+        
         // Clean up server resources first
         if (server instanceof DocumentationServer) {
           await server.cleanup();
-          server.setMaxListeners(10);
         }
 
-        // Clean up test directory
-        await fs.rm(testDir, { recursive: true, force: true });
+        // Clean up test directory with retries
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await fs.rm(testDir, { recursive: true, force: true });
+            break;
+          } catch (error) {
+            if (retries === 1) throw error;
+            retries--;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
 
         // Log cleanup
         logger.debug('Test resources cleaned up', {
@@ -138,8 +167,11 @@ export class TestServer {
         });
         throw error;
       } finally {
-        // Always restore environment
+        // Always restore environment and cleanup event emitters
         process.env = originalEnv;
+        if (server instanceof EventEmitter) {
+          server.removeAllListeners();
+        }
       }
     });
 

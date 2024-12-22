@@ -44,16 +44,34 @@ afterEach(async () => {
 
   // Clear all intervals and timeouts
   const globalObj = typeof window !== 'undefined' ? window : global;
+  
+  // Clear intervals
   const intervals = (globalObj as any)[Symbol.for('jest-native-timers')] || new Set();
   intervals.forEach((interval: any) => {
-    if (interval && typeof interval.unref === 'function') {
-      interval.unref();
+    if (interval) {
+      if (typeof interval.unref === 'function') {
+        interval.unref();
+      }
+      clearInterval(interval);
     }
-    clearInterval(interval);
+  });
+
+  // Clear timeouts
+  const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
+  timeouts.forEach((timeout: any) => {
+    if (timeout) {
+      if (typeof timeout.unref === 'function') {
+        timeout.unref();
+      }
+      clearTimeout(timeout);
+    }
   });
 
   // Wait for any pending promises and ensure file system operations complete
-  await new Promise(resolve => setImmediate(resolve));
+  await Promise.all([
+    new Promise(resolve => setImmediate(resolve)),
+    new Promise(resolve => setTimeout(resolve, 100))
+  ]);
   
   // Additional cleanup for any stray test directories
   try {
