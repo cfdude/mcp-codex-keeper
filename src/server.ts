@@ -12,8 +12,10 @@ export interface ActiveHandle {
 
 // Extend Process type with _getActiveHandles
 declare global {
-  interface Process {
-    _getActiveHandles(): Array<ActiveHandle>;
+  namespace NodeJS {
+    interface Process {
+      _getActiveHandles(): Array<ActiveHandle>;
+    }
   }
 }
 import {

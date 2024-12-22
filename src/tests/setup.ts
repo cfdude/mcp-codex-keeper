@@ -92,8 +92,8 @@ afterEach(async () => {
   // Clean test directories
   const testDataPath = process.env.TEST_DATA_DIR || './test-data';
   try {
-    const fs = await import('fs/promises');
-    await fs.rm(testDataPath, { recursive: true, force: true });
+    const { rm } = await import('fs/promises');
+    await rm(testDataPath, { recursive: true, force: true });
   } catch (error) {
     console.error(`Failed to clean test directory: ${error}`);
   }

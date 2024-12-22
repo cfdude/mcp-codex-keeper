@@ -140,7 +140,7 @@ export class TestServer {
           // Stage 1: Remove all listeners and cleanup server
           cleanupPromises.push(
             new Promise<void>(resolve => {
-              void (async () => {
+              const cleanup = async () => {
                 try {
                   // Remove all listeners for each event
                   server.eventNames().forEach(event => {
@@ -161,7 +161,8 @@ export class TestServer {
                   });
                   resolve();
                 }
-              })().catch(error => {
+              };
+              cleanup().catch(error => {
                 logger.error('Error in cleanup IIFE:', {
                   component: 'TestServer',
                   operation: 'cleanup',
