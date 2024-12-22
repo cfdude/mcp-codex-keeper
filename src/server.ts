@@ -1,5 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { EventEmitter } from 'events';
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -37,14 +38,60 @@ import { logger } from './utils/logger.js';
 /**
  * Main server class for the documentation keeper
  */
-export class DocumentationServer {
+export class DocumentationServer extends EventEmitter {
   private server!: Server;
   private fsManager!: FileSystemManager;
   private docs: DocSource[] = [];
   private contentFetcher: ContentFetcher;
   private rateLimiter: RateLimiter;
+  private _cleanupInterval?: NodeJS.Timeout;
+
+  /**
+   * Cleanup resources and listeners
+   */
+  public async cleanup(): Promise<void> {
+    try {
+      // Clear the cleanup interval
+      if (this._cleanupInterval) {
+        clearInterval(this._cleanupInterval);
+        this._cleanupInterval = undefined;
+      }
+
+      // Clean up file system manager
+      if (this.fsManager) {
+        await this.fsManager.destroy();
+      }
+
+      // Reset content fetcher
+      this.contentFetcher = new ContentFetcher({
+        maxRetries: 3,
+        retryDelay: 2000,
+        timeout: 15000,
+      });
+
+      // Remove all listeners from this instance
+      this.removeAllListeners();
+
+      // Reset rate limiter
+      this.rateLimiter = new RateLimiter(DEFAULT_RATE_LIMIT_CONFIG);
+
+      // Log cleanup
+      logger.debug('DocumentationServer cleanup completed', {
+        component: 'DocumentationServer',
+        operation: 'cleanup'
+      });
+    } catch (error) {
+      logger.error('Error during DocumentationServer cleanup', {
+        component: 'DocumentationServer',
+        operation: 'cleanup',
+        error: error instanceof Error ? error : new Error(String(error))
+      });
+      throw error;
+    }
+  }
 
   constructor() {
+    super();
     this.rateLimiter = new RateLimiter(DEFAULT_RATE_LIMIT_CONFIG);
     this.contentFetcher = new ContentFetcher({
       maxRetries: 3,
@@ -122,7 +169,7 @@ export class DocumentationServer {
     this.setupErrorHandlers();
 
     // Start rate limiter cleanup
-    setInterval(() => {
+    this._cleanupInterval = setInterval(() => {
       this.rateLimiter.cleanup(ENV.cacheMaxAge);
     }, ENV.cacheCleanupInterval);
 

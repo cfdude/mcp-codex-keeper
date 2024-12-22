@@ -1,9 +1,11 @@
 import { jest } from '@jest/globals';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { EventEmitter } from 'events';
 import { DocumentationServer } from '../../server.js';
 import { DocSource, ValidCategory } from '../../types/index.js';
 import path from 'path';
 import fs from 'fs/promises';
+import { logger } from '../../utils/logger.js';
 
 export interface ServerResponse {
   content?: Array<{ type: string; text: string }>;
@@ -49,6 +51,23 @@ export class TestServer {
     this.server = server;
     this.mockHandlers = new Map();
     this.resources = new Map();
+    
+    // Set max listeners to avoid memory leak warnings
+    if (server instanceof DocumentationServer) {
+      server.setMaxListeners(20);
+    }
+
+    // Set up MCP protocol handlers
+    const listToolsHandler: ServerHandler = async () => ({
+      content: [{ type: 'text', text: JSON.stringify([]) }], // Empty array as we don't have tools in test environment
+    });
+
+    const listResourcesHandler: ServerHandler = async () => ({
+      content: [{ 
+        type: 'text', 
+        text: JSON.stringify(await this.listResources())
+      }],
+    });
 
     const mockServer: MockServer = {
       setRequestHandler: jest.fn(async (schema: ServerSchema, handler: ServerHandler) => {
@@ -63,6 +82,10 @@ export class TestServer {
 
     this.mockServer = mockServer;
     this.setMockServer(mockServer as unknown as Server);
+
+    // Register MCP protocol handlers
+    mockServer.setRequestHandler({ shape: { method: { value: 'list_tools' } } }, listToolsHandler);
+    mockServer.setRequestHandler({ shape: { method: { value: 'list_resources' } } }, listResourcesHandler);
   }
 
   private setMockServer(mockServer: Server): void {
@@ -85,16 +108,39 @@ export class TestServer {
       ...originalEnv,
       STORAGE_PATH: testDir,
       MCP_ENV: 'local',
+      NODE_ENV: 'test', // Ensure test environment for logger
     };
 
     // Register cleanup for this test directory
     afterEach(async () => {
       try {
+        // Clean up server resources first
+        if (server instanceof DocumentationServer) {
+          await server.cleanup();
+          server.setMaxListeners(10);
+        }
+
+        // Clean up test directory
         await fs.rm(testDir, { recursive: true, force: true });
+
+        // Log cleanup
+        logger.debug('Test resources cleaned up', {
+          component: 'TestServer',
+          operation: 'cleanup',
+          testDir
+        });
       } catch (error) {
-        console.error('Failed to cleanup test directory:', error);
+        logger.error('Failed to cleanup test resources', {
+          component: 'TestServer',
+          operation: 'cleanup',
+          error: error instanceof Error ? error : new Error(String(error)),
+          testDir
+        });
+        throw error;
+      } finally {
+        // Always restore environment
+        process.env = originalEnv;
       }
-      process.env = originalEnv;
     });
 
     const server = await DocumentationServer.start();

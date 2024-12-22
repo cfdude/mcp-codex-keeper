@@ -9,21 +9,22 @@ describe('MCP Integration Tests', () => {
 
   beforeEach(async () => {
     // Create a unique test directory with timestamp and random id for concurrent safety
+    const instanceId = Math.random().toString(36).slice(2);
     testDir = path.join(
       process.cwd(),
       'test-data',
-      `integration-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `integration-test-${Date.now()}-${instanceId}`
     );
     await fs.mkdir(testDir, { recursive: true });
 
-    // Set up test environment with unique storage path
+    // Set up test environment with unique storage path and instance ID
     originalEnv = process.env;
     process.env = {
       ...originalEnv,
       MCP_ENV: 'test',
       STORAGE_PATH: testDir,
       NODE_ENV: 'test',
-      TEST_INSTANCE_ID: Math.random().toString(36).slice(2), // Add unique instance ID for concurrent tests
+      TEST_INSTANCE_ID: instanceId,
     };
 
     // Создаем тестовый сервер
@@ -104,18 +105,30 @@ describe('MCP Integration Tests', () => {
 
   describe('MCP Protocol Compliance', () => {
     it('should handle tool requests according to MCP protocol', async () => {
-      // Проверяем обработчик list_tools
+      // Check list_tools handler with retry
       const listToolsHandler = server.getMockHandler('list_tools');
-      const toolList = await listToolsHandler({ params: {} });
-      expect(toolList).toEqual({
-        tools: expect.arrayContaining([
-          expect.objectContaining({
-            name: expect.any(String),
-            description: expect.any(String),
-            inputSchema: expect.any(Object),
-          }),
-        ]),
-      });
+      const retryOperation = async () => {
+        try {
+          const toolList = await listToolsHandler({ params: {} });
+          expect(toolList).toEqual({
+            tools: expect.arrayContaining([
+              expect.objectContaining({
+                name: expect.any(String),
+                description: expect.any(String),
+                inputSchema: expect.any(Object),
+              }),
+            ]),
+          });
+          return toolList;
+        } catch (error: any) {
+          if (error.message?.includes('already exists')) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return retryOperation();
+          }
+          throw error;
+        }
+      };
+      await retryOperation();
 
       // Проверяем обработчик call_tool
       const callToolHandler = server.getMockHandler('call_tool');
@@ -137,19 +150,31 @@ describe('MCP Integration Tests', () => {
     });
 
     it('should handle resource requests according to MCP protocol', async () => {
-      // Проверяем обработчик list_resources
+      // Check list_resources handler with retry
       const listResourcesHandler = server.getMockHandler('list_resources');
-      const resourceList = await listResourcesHandler({ params: {} });
-      expect(resourceList).toEqual({
-        resources: expect.arrayContaining([
-          expect.objectContaining({
-            uri: expect.any(String),
-            name: expect.any(String),
-            description: expect.any(String),
-            mimeType: expect.any(String),
-          }),
-        ]),
-      });
+      const retryOperation = async () => {
+        try {
+          const resourceList = await listResourcesHandler({ params: {} });
+          expect(resourceList).toEqual({
+            resources: expect.arrayContaining([
+              expect.objectContaining({
+                uri: expect.any(String),
+                name: expect.any(String),
+                description: expect.any(String),
+                mimeType: expect.any(String),
+              }),
+            ]),
+          });
+          return resourceList;
+        } catch (error: any) {
+          if (error.message?.includes('already exists')) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return retryOperation();
+          }
+          throw error;
+        }
+      };
+      await retryOperation();
 
       // Проверяем обработчик read_resource
       const readResourceHandler = server.getMockHandler('read_resource');

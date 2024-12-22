@@ -981,9 +981,37 @@ export class FileSystemManager {
   /**
    * Cleanup resources
    */
-  destroy(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
+  async destroy(): Promise<void> {
+    try {
+      // Clear timer
+      if (this.cleanupTimer) {
+        clearInterval(this.cleanupTimer);
+        this.cleanupTimer = undefined;
+      }
+
+      // Reset content fetcher
+      this.contentFetcher = new ContentFetcher({
+        maxRetries: 3,
+        retryDelay: 2000,
+        timeout: 15000,
+      });
+
+      // Clear maps
+      this.metadata.clear();
+      this.searchIndices.clear();
+
+      // Log cleanup
+      logger.debug('FileSystemManager resources cleaned up', {
+        component: 'FileSystemManager',
+        operation: 'destroy'
+      });
+    } catch (error) {
+      logger.error('Error during FileSystemManager cleanup', {
+        component: 'FileSystemManager',
+        operation: 'destroy',
+        error: error instanceof Error ? error : new Error(String(error))
+      });
+      throw error;
     }
   }
 }

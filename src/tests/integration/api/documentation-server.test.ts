@@ -6,7 +6,10 @@ describe('Documentation Server API Integration', () => {
   let env: { testDir: string; cleanup: () => Promise<void> };
 
   beforeEach(async () => {
-    env = await createTestEnvironment(`docserver-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    // Create unique test environment with instance ID
+    const instanceId = Math.random().toString(36).slice(2);
+    env = await createTestEnvironment(`docserver-${Date.now()}-${instanceId}`);
+    process.env.TEST_INSTANCE_ID = instanceId;
     server = await TestServer.createTestInstance();
   });
 
