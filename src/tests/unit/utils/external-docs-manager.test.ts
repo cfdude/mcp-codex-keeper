@@ -34,9 +34,25 @@ describe('ExternalDocsManager', () => {
 
   afterAll(async () => {
     try {
+      // Clean up main test directory
       await fs.rm(TEST_DATA_DIR, { recursive: true, force: true });
+      
+      // Clean up any stray backup directories that might have been created
+      const baseDir = path.join(process.cwd(), 'test-data');
+      const entries = await fs.readdir(baseDir);
+      const backupDirs = entries.filter(entry => entry.startsWith('external-docs-'));
+      
+      await Promise.all(
+        backupDirs.map(async dir => {
+          try {
+            await fs.rm(path.join(baseDir, dir), { recursive: true, force: true });
+          } catch (cleanupError) {
+            console.error(`Failed to cleanup backup directory ${dir}:`, cleanupError);
+          }
+        })
+      );
     } catch (error) {
-      console.error('Failed to cleanup test-data directory:', error);
+      console.error('Failed to cleanup test directories:', error);
     }
   });
 
@@ -65,15 +81,35 @@ describe('ExternalDocsManager', () => {
   });
 
   afterEach(async () => {
-    if (manager) {
-      manager.destroy();
-    }
-    if (testDir) {
-      try {
-        await fs.rm(testDir, { recursive: true, force: true });
-      } catch (error) {
-        console.error('Failed to cleanup test directory:', error);
+    try {
+      // Ensure manager is properly destroyed
+      if (manager) {
+        await Promise.race([
+          manager.destroy(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Manager destroy timeout')), 5000))
+        ]).catch(error => {
+          console.error('Failed to destroy manager:', error);
+          // Force cleanup even if destroy fails
+          manager = undefined as unknown as ExternalDocsManager;
+        });
       }
+
+      // Clean up test directory
+      if (testDir) {
+        try {
+          await fs.rm(testDir, { recursive: true, force: true });
+          
+          // Also clean up any backup directories created during the test
+          const backupDir = path.join(testDir, 'backups');
+          if (await fs.access(backupDir).then(() => true).catch(() => false)) {
+            await fs.rm(backupDir, { recursive: true, force: true });
+          }
+        } catch (error) {
+          console.error('Failed to cleanup test directory:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to cleanup test resources:', error);
     }
   });
 

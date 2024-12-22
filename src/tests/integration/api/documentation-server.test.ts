@@ -1,5 +1,7 @@
 import { TestServer, ServerResponse } from '../../helpers/test-server.js';
 import { createTestEnvironment } from '../../helpers/test-utils.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 describe('Documentation Server API Integration', () => {
   let server: TestServer;
@@ -28,7 +30,30 @@ describe('Documentation Server API Integration', () => {
 
   afterEach(async () => {
     try {
+      // Cleanup test environment
       await env.cleanup();
+      
+      // Additional cleanup of any stray test directories
+      const baseDir = path.join(process.cwd(), 'test-data');
+      const entries = await fs.readdir(baseDir);
+      const testDirs = entries.filter((entry: string) => 
+        entry.startsWith(`docserver-${Date.now().toString().slice(0, -3)}`)
+      );
+      
+      await Promise.all(
+        testDirs.map(async (dir: string) => {
+          try {
+            await fs.rm(path.join(baseDir, dir), { recursive: true, force: true });
+          } catch (cleanupError) {
+            console.error(`Failed to cleanup test directory ${dir}:`, cleanupError);
+          }
+        })
+      );
+
+      // Force cleanup of any remaining resources
+      if (global.gc) {
+        global.gc();
+      }
     } catch (error) {
       console.error('Failed to cleanup test environment:', error);
       throw error;

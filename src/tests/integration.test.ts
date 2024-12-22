@@ -32,19 +32,47 @@ describe('MCP Integration Tests', () => {
   });
 
   afterEach(async () => {
-    // Clean up test directory and restore environment
     try {
-      await fs.rm(testDir, { recursive: true, force: true });
+      // Clean up test directory and any subdirectories
+      if (testDir) {
+        try {
+          await fs.rm(testDir, { recursive: true, force: true });
+          
+          // Clean up any related test directories
+          const baseDir = path.join(process.cwd(), 'test-data');
+          const entries = await fs.readdir(baseDir);
+          const relatedDirs = entries.filter(entry => 
+            entry.startsWith(`integration-test-${Date.now().toString().slice(0, -3)}`)
+          );
+          
+          await Promise.all(
+            relatedDirs.map(async dir => {
+              try {
+                await fs.rm(path.join(baseDir, dir), { recursive: true, force: true });
+              } catch (cleanupError) {
+                console.error(`Failed to cleanup related directory ${dir}:`, cleanupError);
+              }
+            })
+          );
+        } catch (error) {
+          console.error('Failed to cleanup test directory:', error);
+        }
+      }
+
+      // Restore original environment
+      process.env = originalEnv;
+
+      // Restore mocks and clear any remaining handles
+      jest.restoreAllMocks();
+      jest.clearAllMocks();
+      
+      // Force garbage collection of any remaining resources
+      if (global.gc) {
+        global.gc();
+      }
     } catch (error) {
-      console.error('Failed to cleanup test directory:', error);
+      console.error('Failed to perform complete cleanup:', error);
     }
-
-    // Restore original environment
-    process.env = originalEnv;
-
-    // Restore mocks
-    jest.restoreAllMocks();
-    jest.clearAllMocks();
   });
 
   describe('Tool Execution Flow', () => {
