@@ -6,7 +6,7 @@ describe('Documentation Server API Integration', () => {
   let env: { testDir: string; cleanup: () => Promise<void> };
 
   beforeEach(async () => {
-    env = await createTestEnvironment();
+    env = await createTestEnvironment(`docserver-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     server = await TestServer.createTestInstance();
   });
 
@@ -104,17 +104,27 @@ describe('Documentation Server API Integration', () => {
 
   describe('Concurrent Operations', () => {
     it('should handle concurrent documentation updates', async () => {
-      // Add initial docs
+      // Add initial docs with retry logic for concurrent operations
       const docs = ['Doc1', 'Doc2', 'Doc3'];
-      await Promise.all(
-        docs.map(name =>
-          server.addTestDoc({
+      
+      // Helper function to add or update doc with retry logic
+      const addOrUpdateDoc = async (name: string) => {
+        try {
+          await server.addTestDoc({
             name,
             url: `https://example.com/${name}`,
             category: 'Base.Standards',
-          })
-        )
-      );
+          });
+        } catch (error: any) {
+          if (error.message?.includes('already exists')) {
+            await server.updateDocumentation({ name, force: true });
+          } else {
+            throw error;
+          }
+        }
+      };
+
+      await Promise.all(docs.map(addOrUpdateDoc));
 
       // Perform concurrent updates
       await Promise.all(

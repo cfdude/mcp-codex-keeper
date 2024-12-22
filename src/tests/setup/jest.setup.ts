@@ -1,5 +1,7 @@
 import 'jest-extended';
 import { mockDeep, mockReset } from 'jest-mock-extended';
+import fs from 'fs/promises';
+import path from 'path';
 
 // Extend Jest matchers
 expect.extend({
@@ -50,8 +52,29 @@ afterEach(async () => {
     clearInterval(interval);
   });
 
-  // Wait for any pending promises
+  // Wait for any pending promises and ensure file system operations complete
   await new Promise(resolve => setImmediate(resolve));
+  
+  // Additional cleanup for any stray test directories
+  try {
+    const testDataDir = path.join(process.cwd(), 'test-data');
+    const contents = await fs.readdir(testDataDir);
+    await Promise.all(
+      contents.map(async (item) => {
+        const fullPath = path.join(testDataDir, item);
+        try {
+          await fs.rm(fullPath, { recursive: true, force: true });
+        } catch (error) {
+          console.error(`Failed to cleanup ${fullPath}:`, error);
+        }
+      })
+    );
+  } catch (error) {
+    // Ignore if test-data doesn't exist
+    if ((error as any)?.code !== 'ENOENT') {
+      console.error('Failed to cleanup test directories:', error);
+    }
+  }
 });
 
 // Clean up after all tests

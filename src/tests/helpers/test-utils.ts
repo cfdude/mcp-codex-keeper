@@ -5,11 +5,11 @@ import { DocSource, ValidCategory } from '../../types/index.js';
 /**
  * Creates a test directory with a unique name
  */
-export const createTestDir = async (): Promise<string> => {
+export const createTestDir = async (prefix = 'test'): Promise<string> => {
   const testDir = path.join(
     process.cwd(),
     'test-data',
-    `test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   await fs.mkdir(testDir, { recursive: true });
   return testDir;
@@ -29,8 +29,8 @@ export const cleanupTestDir = async (testDir: string): Promise<void> => {
 /**
  * Creates a test environment with all necessary setup
  */
-export const createTestEnvironment = async () => {
-  const testDir = await createTestDir();
+export const createTestEnvironment = async (prefix?: string) => {
+  const testDir = await createTestDir(prefix);
 
   // Set test environment variables
   const originalEnv = process.env;

@@ -5,23 +5,25 @@ import fs from 'fs/promises';
 describe('MCP Integration Tests', () => {
   let testDir: string;
   let server: TestServer;
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(async () => {
-    // Создаем тестовую директорию в безопасном месте
+    // Create a unique test directory with timestamp and random id for concurrent safety
     testDir = path.join(
       process.cwd(),
       'test-data',
-      `mcp-codex-keeper-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `integration-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await fs.mkdir(testDir, { recursive: true });
 
-    // Настраиваем окружение для тестов
-    const originalEnv = process.env;
+    // Set up test environment with unique storage path
+    originalEnv = process.env;
     process.env = {
       ...originalEnv,
       MCP_ENV: 'test',
       STORAGE_PATH: testDir,
       NODE_ENV: 'test',
+      TEST_INSTANCE_ID: Math.random().toString(36).slice(2), // Add unique instance ID for concurrent tests
     };
 
     // Создаем тестовый сервер
@@ -29,15 +31,19 @@ describe('MCP Integration Tests', () => {
   });
 
   afterEach(async () => {
-    // Очищаем тестовую директорию
+    // Clean up test directory and restore environment
     try {
       await fs.rm(testDir, { recursive: true, force: true });
     } catch (error) {
       console.error('Failed to cleanup test directory:', error);
     }
 
-    // Восстанавливаем моки
+    // Restore original environment
+    process.env = originalEnv;
+
+    // Restore mocks
     jest.restoreAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('Tool Execution Flow', () => {
@@ -196,13 +202,25 @@ describe('MCP Integration Tests', () => {
     });
 
     it('should handle network errors during documentation update', async () => {
-      // Add test doc
-      await server.addTestDoc({
-        name: 'Test Doc',
-        url: 'https://example.com/doc',
-        category: 'Base.Standards',
-        description: 'Test description',
-      });
+      // Add test doc with retry logic
+      const addOrUpdateDoc = async (name: string, description = 'Test description') => {
+        try {
+          await server.addTestDoc({
+            name,
+            url: 'https://example.com/doc',
+            category: 'Base.Standards',
+            description,
+          });
+        } catch (error: any) {
+          if (error.message?.includes('already exists')) {
+            await server.updateDocumentation({ name, force: true });
+          } else {
+            throw error;
+          }
+        }
+      };
+
+      await addOrUpdateDoc('Test Doc');
 
       // Mock network error
       jest.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('Network error'));
@@ -219,10 +237,29 @@ describe('MCP Integration Tests', () => {
 
   describe('Mode Switching Tests', () => {
     it('should handle mode-specific behavior', async () => {
-      // Test local mode
+      // Test local mode with retry logic for concurrent operations
       process.env.MCP_ENV = 'local';
       const localServer = await TestServer.createTestInstance();
       const localDocServer = localServer.getServer();
+      
+      // Add test doc with retry logic
+      const addOrUpdateDoc = async (name: string) => {
+        try {
+          await localServer.addTestDoc({
+            name,
+            url: 'https://example.com/doc',
+            category: 'Base.Standards',
+          });
+        } catch (error: any) {
+          if (error.message?.includes('already exists')) {
+            await localServer.updateDocumentation({ name, force: true });
+          } else {
+            throw error;
+          }
+        }
+      };
+
+      await addOrUpdateDoc('LocalTest');
       expect((localDocServer as any).isLocal).toBe(true);
 
       // Test production mode

@@ -26,7 +26,7 @@ function createTestMetadata(overrides: Partial<DocMetadata> = {}): DocMetadata {
 describe('ExternalDocsManager', () => {
   let manager: ExternalDocsManager;
   let testDir: string;
-  const TEST_DATA_DIR = path.join(process.cwd(), 'test-data');
+  const TEST_DATA_DIR = path.join(process.cwd(), 'test-data', `external-docs-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   beforeAll(async () => {
     await fs.mkdir(TEST_DATA_DIR, { recursive: true });

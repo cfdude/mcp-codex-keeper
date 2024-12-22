@@ -26,7 +26,7 @@ describe('DocumentationServer', () => {
     // Create temp test directory
     testDir = path.join(
       os.tmpdir(),
-      'mcp-codex-keeper-test-' + Math.random().toString(36).slice(2)
+      `mcp-codex-keeper-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await fs.mkdir(testDir, { recursive: true });
 

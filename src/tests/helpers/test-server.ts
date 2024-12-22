@@ -71,13 +71,31 @@ export class TestServer {
   }
 
   static async createTestInstance(): Promise<TestServer> {
-    // Создаем временную директорию для тестов
-    const testDir = path.join(process.cwd(), 'test-data', `test-${Date.now()}`);
+    // Create a unique test directory with timestamp and random id
+    const testDir = path.join(
+      process.cwd(),
+      'test-data',
+      `test-server-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
     await fs.mkdir(testDir, { recursive: true });
 
-    // Установим переменные окружения
-    process.env.STORAGE_PATH = testDir;
-    process.env.MCP_ENV = 'local';
+    // Set environment variables
+    const originalEnv = process.env;
+    process.env = {
+      ...originalEnv,
+      STORAGE_PATH: testDir,
+      MCP_ENV: 'local',
+    };
+
+    // Register cleanup for this test directory
+    afterEach(async () => {
+      try {
+        await fs.rm(testDir, { recursive: true, force: true });
+      } catch (error) {
+        console.error('Failed to cleanup test directory:', error);
+      }
+      process.env = originalEnv;
+    });
 
     const server = await DocumentationServer.start();
     return new TestServer(server);
