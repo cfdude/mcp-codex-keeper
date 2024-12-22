@@ -16,7 +16,7 @@
     "serve": "cross-env NODE_ENV=development NODE_OPTIONS='--max-old-space-size=256' node build/index.js",
     "validate": "npm-run-all --silent type-check lint test:ci",
     "test": "cross-env NODE_ENV=test jest --verbose",
-    "test:ci": "cross-env NODE_ENV=test jest --ci --silent",
+    "test:ci": "cross-env NODE_ENV=test jest --ci --detectOpenHandles --forceExit",
     "test:coverage": "npm run test -- --coverage",
     "test:watch": "jest --watch",
     "test:report": "npm run test:coverage && open-cli test-report/index.html",

@@ -70,6 +70,8 @@ afterEach(async () => {
 
   // Clear all intervals and timeouts
   const globalObj = typeof window !== 'undefined' ? window : global;
+  
+  // Handle intervals
   const intervals = (globalObj as any)[Symbol.for('jest-native-timers')] || new Set();
   intervals.forEach((interval: any) => {
     if (interval && typeof interval.unref === 'function') {
@@ -78,8 +80,29 @@ afterEach(async () => {
     clearInterval(interval);
   });
 
-  // Wait for any pending promises
-  await new Promise(resolve => setImmediate(resolve));
+  // Handle timeouts
+  const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
+  timeouts.forEach((timeout: any) => {
+    if (timeout && typeof timeout.unref === 'function') {
+      timeout.unref();
+    }
+    clearTimeout(timeout);
+  });
+
+  // Clean test directories
+  const testDataPath = process.env.TEST_DATA_DIR || './test-data';
+  try {
+    const fs = require('fs').promises;
+    await fs.rm(testDataPath, { recursive: true, force: true });
+  } catch (error) {
+    console.error(`Failed to clean test directory: ${error}`);
+  }
+
+  // Wait for any pending promises and I/O operations
+  await Promise.all([
+    new Promise(resolve => setImmediate(resolve)),
+    new Promise(resolve => setTimeout(resolve, 100))
+  ]);
 });
 
 // Clean up after all tests
