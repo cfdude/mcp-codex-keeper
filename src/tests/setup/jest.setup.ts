@@ -45,14 +45,17 @@ afterEach(async () => {
   // Clear all intervals and timeouts
   const globalObj = typeof window !== 'undefined' ? window : global;
   
+  // Get all active handles
+  const activeHandles = (process as any)._getActiveHandles?.() || [];
+  
   // Clear intervals and timeouts
   const intervals = (globalObj as any)[Symbol.for('jest-native-timers')] || new Set();
   const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
   
-  // Unref all timers first to prevent blocking
-  [...intervals, ...timeouts].forEach((timer: any) => {
-    if (timer && typeof timer.unref === 'function') {
-      timer.unref();
+  // Unref all timers and handles first to prevent blocking
+  [...intervals, ...timeouts, ...activeHandles].forEach((handle: any) => {
+    if (handle && typeof handle.unref === 'function') {
+      handle.unref();
     }
   });
 

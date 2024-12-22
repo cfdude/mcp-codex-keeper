@@ -20,9 +20,17 @@ export const createTestDir = async (prefix = 'test'): Promise<string> => {
  */
 export const cleanupTestDir = async (testDir: string): Promise<void> => {
   try {
+    // Ensure all file operations are complete
+    await new Promise(resolve => setImmediate(resolve));
+    
+    // Remove directory with force flag
     await fs.rm(testDir, { recursive: true, force: true });
   } catch (error) {
-    console.error(`Failed to clean test directory: ${error}`);
+    // Log error but don't throw to prevent test failures
+    console.error('Failed to clean test directory:', {
+      testDir,
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 };
 
@@ -31,9 +39,9 @@ export const cleanupTestDir = async (testDir: string): Promise<void> => {
  */
 export const createTestEnvironment = async (prefix?: string) => {
   const testDir = await createTestDir(prefix);
+  const originalEnv = process.env;
 
   // Set test environment variables
-  const originalEnv = process.env;
   process.env = {
     ...originalEnv,
     MCP_ENV: 'test',
@@ -41,13 +49,34 @@ export const createTestEnvironment = async (prefix?: string) => {
     NODE_ENV: 'test',
   };
 
-  return {
-    testDir,
-    cleanup: async () => {
-      await cleanupTestDir(testDir);
+  // Register cleanup in afterEach to ensure it runs even if test fails
+  afterEach(async () => {
+    try {
+      // Wait for any pending operations
+      await Promise.all([
+        new Promise(resolve => setImmediate(resolve)),
+        new Promise(resolve => setTimeout(resolve, 100))
+      ]);
+
+      // Clean up test directory with retries
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          await cleanupTestDir(testDir);
+          break;
+        } catch (error) {
+          if (retries === 1) throw error;
+          retries--;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    } finally {
+      // Always restore environment
       process.env = originalEnv;
-    },
-  };
+    }
+  });
+
+  return { testDir };
 };
 
 /**
