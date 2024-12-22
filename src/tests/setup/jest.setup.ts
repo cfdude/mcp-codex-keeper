@@ -340,7 +340,10 @@ afterEach(async () => {
               return isExited || isStopped || isNotRunning || hasBeenRunningTooLong;
             }
             return false;
-          }) || []) as WorkerHandle[];
+          }) || []).map(handle => ({
+            ...handle,
+            startTime: (handle as any).startTime || Date.now()
+          })) as WorkerHandle[];
           
         for (const worker of remainingWorkers) {
           try {
