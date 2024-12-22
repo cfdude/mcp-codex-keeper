@@ -1,5 +1,26 @@
 # MCP Codex Keeper Memory Log
 
+## 2024-01-09: Test Infrastructure Improvements
+
+### Changes from devin's PRs
+
+1. Test Cleanup and Node.js Support (fix-test-cleanup):
+
+   - Added Node.js 16.x support to test matrix
+   - Now testing across Node.js 16.x, 18.x, and 20.x versions
+   - Added destroy() method to FileSystemManager
+   - Implemented proper cleanup of cache timer
+   - Prevents potential memory leaks in long-running instances
+
+2. Test Infrastructure Improvements (fix-tests-cicd):
+   - Simplified and improved resource cleanup
+   - Enhanced parallel test execution handling
+   - Optimized Jest configuration
+   - Improved test environment setup/teardown
+   - Better handling of test timeouts and async operations
+   - More reliable worker process management
+   - Streamlined logging in test environment
+
 ## 2024-01-09: Documentation Access Issues
 
 ### Problem
