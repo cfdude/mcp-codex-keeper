@@ -111,7 +111,15 @@ afterEach(async () => {
   // Wait for any pending promises and ensure file system operations complete
   await Promise.all([
     new Promise(resolve => setImmediate(resolve)),
-    new Promise(resolve => setTimeout(resolve, 100))
+    // Increase timeout to ensure all cleanup operations complete
+    new Promise(resolve => setTimeout(resolve, 1000)),
+    // Add forced garbage collection to help clean up resources
+    new Promise(resolve => {
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
+      resolve(undefined);
+    })
   ]);
   
   // Additional cleanup for any stray test directories
@@ -141,8 +149,16 @@ afterAll(async () => {
   // Final cleanup of any remaining timers or handles
   jest.clearAllTimers();
 
-  // Wait for any remaining operations
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // Final cleanup and wait for any remaining operations
+  if (typeof global.gc === 'function') {
+    global.gc();
+  }
+  
+  // Extended wait to ensure all cleanup completes
+  await Promise.all([
+    new Promise(resolve => setImmediate(resolve)),
+    new Promise(resolve => setTimeout(resolve, 2000))
+  ]);
 });
 
 // Add custom types for matchers

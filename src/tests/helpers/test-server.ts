@@ -91,10 +91,14 @@ export class TestServer {
           // Reset to original state
           server.setMaxListeners(originalMaxListeners);
           
-          // Wait for cleanup with timeout
-          await Promise.race([
+          // Enhanced cleanup with multiple stages and increased timeout
+          await Promise.all([
+            // Stage 1: Immediate operations
             new Promise(resolve => setImmediate(resolve)),
-            new Promise(resolve => setTimeout(resolve, 1000))
+            // Stage 2: Short delay for most cleanup operations
+            new Promise(resolve => setTimeout(resolve, 500)),
+            // Stage 3: Extended wait for stubborn cleanup
+            new Promise(resolve => setTimeout(resolve, 2000))
           ]);
           
           // Final verification of cleanup with detailed logging
