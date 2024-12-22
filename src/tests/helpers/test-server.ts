@@ -52,27 +52,66 @@ export class TestServer {
     this.mockHandlers = new Map();
     this.resources = new Map();
     
-    // Set max listeners to avoid memory leak warnings and ensure proper cleanup
+    // Enhanced server cleanup and event handling
     if (server instanceof DocumentationServer) {
-      server.setMaxListeners(20);
+      // Set max listeners with safety margin
+      const MAX_LISTENERS = 50;
+      server.setMaxListeners(MAX_LISTENERS);
       
-      // Store original listeners count for cleanup
+      // Store original state
       const originalMaxListeners = server.getMaxListeners();
       
-      // Add cleanup hook for this test instance
+      // Create a Map to store original listeners since events can be symbols
+      const originalListeners = new Map<string | symbol, Function[]>();
+      server.eventNames().forEach(event => {
+        originalListeners.set(event, server.listeners(event));
+      });
+      
+      // Add comprehensive cleanup hook
       afterEach(async () => {
         try {
-          // Ensure all event emitters are properly cleaned up first
+          // First remove all test-specific listeners
+          server.eventNames().forEach(event => {
+            const originalEventListeners = originalListeners.get(event) || [];
+            const currentListeners = server.listeners(event);
+            
+            // Remove only the listeners that were added during the test
+            currentListeners.forEach(listener => {
+              if (!originalEventListeners.includes(listener)) {
+                server.removeListener(event, listener as (...args: any[]) => void);
+              }
+            });
+          });
+          
+          // Then perform server cleanup
           if (typeof server.cleanup === 'function') {
             await server.cleanup();
           }
           
-          // Then reset max listeners and remove any remaining listeners
+          // Reset to original state
           server.setMaxListeners(originalMaxListeners);
-          server.removeAllListeners();
           
-          // Wait for any remaining operations
-          await new Promise(resolve => setImmediate(resolve));
+          // Wait for cleanup with timeout
+          await Promise.race([
+            new Promise(resolve => setImmediate(resolve)),
+            new Promise(resolve => setTimeout(resolve, 1000))
+          ]);
+          
+          // Final verification of cleanup with detailed logging
+          const remainingEvents = server.eventNames();
+          if (remainingEvents.length > 0) {
+            const remainingListenerCounts = remainingEvents.map(event => ({
+              event: event.toString(),
+              count: server.listeners(event).length
+            }));
+            
+            logger.warn('Some listeners remained after cleanup', {
+              component: 'TestServer',
+              operation: 'cleanup',
+              remainingListenerCounts,
+              totalEvents: remainingEvents.length
+            });
+          }
         } catch (error) {
           logger.error('Failed to cleanup test server', {
             component: 'TestServer',

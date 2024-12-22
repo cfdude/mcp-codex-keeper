@@ -177,75 +177,120 @@ export class DocumentationServer extends EventEmitter {
   }
 
   private async init(): Promise<void> {
-    // Get runtime configuration
-    const runtime = getRuntimeConfig();
-    const storagePath = runtime.storagePath;
-
-    console.error('\nInitializing storage:');
-    console.error('- Storage path:', storagePath);
-
-    // Try to create storage directories, but don't fail if they exist or can't be created
     try {
-      await fs.mkdir(storagePath, { recursive: true });
-      await fs.mkdir(path.join(storagePath, 'cache'), { recursive: true });
-      await fs.mkdir(path.join(storagePath, 'metadata'), { recursive: true });
-      console.error('- Created directories successfully');
+      // Get runtime configuration
+      const runtime = getRuntimeConfig();
+      const storagePath = runtime.storagePath;
 
-      // Ensure .codexkeeper is in .gitignore of the project
-      await ensureGitIgnore(process.cwd());
-      console.error('- Verified .gitignore configuration');
-    } catch (error) {
-      // Log error but continue - the directories might already exist or be created by another process
-      console.error('- Note: Could not create some directories:', error);
-    }
-
-    this.fsManager = new FileSystemManager(storagePath, {
-      maxSize: ENV.cacheMaxSize,
-      maxAge: ENV.cacheMaxAge,
-      cleanupInterval: ENV.cacheCleanupInterval,
-    });
-
-    // Ensure directories and symlinks are created
-    await this.fsManager.ensureDirectories();
-    console.error('- Initialized file system manager');
-
-    this.server = new Server(
-      {
-        name: runtime.serverName,
-        version: '1.1.10',
-      },
-      {
-        capabilities: {
-          tools: {},
-          resources: {},
-        },
-      }
-    );
-
-    // Initialize with empty array, will be populated in run()
-    this.docs = [];
-
-    this.setupToolHandlers();
-    this.setupResourceHandlers();
-    this.setupErrorHandlers();
-
-    // Start rate limiter cleanup
-    this._cleanupInterval = setInterval(() => {
-      this.rateLimiter.cleanup(ENV.cacheMaxAge);
-    }, ENV.cacheCleanupInterval);
-
-    // Log initial documentation state with version indicator
-    console.error('Available Documentation Categories:');
-    const categories = [...new Set(this.docs.map(doc => doc.category))];
-    categories.forEach(category => {
-      const docsInCategory = this.docs.filter(doc => doc.category === category);
-      console.error(`\n${category}:`);
-      docsInCategory.forEach(doc => {
-        console.error(`- ${doc.name}`);
-        console.error(`  ${doc.description}`);
-        console.error(`  Tags: ${doc.tags?.join(', ') || 'none'}`);
+      logger.info('Initializing storage', {
+        component: 'DocumentationServer',
+        operation: 'init',
+        storagePath
       });
-    });
+
+      // Try to create storage directories, but don't fail if they exist
+      try {
+        await fs.mkdir(storagePath, { recursive: true });
+        await fs.mkdir(path.join(storagePath, 'cache'), { recursive: true });
+        await fs.mkdir(path.join(storagePath, 'metadata'), { recursive: true });
+        
+        // Ensure .codexkeeper is in .gitignore of the project
+        await ensureGitIgnore(process.cwd());
+        
+        logger.debug('Storage directories created', {
+          component: 'DocumentationServer',
+          operation: 'init'
+        });
+      } catch (error) {
+        // Log error but continue - directories might exist
+        logger.warn('Could not create some directories', {
+          component: 'DocumentationServer',
+          operation: 'init',
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+      }
+
+      // Initialize file system manager with proper error handling
+      this.fsManager = new FileSystemManager(storagePath, {
+        maxSize: ENV.cacheMaxSize,
+        maxAge: ENV.cacheMaxAge,
+        cleanupInterval: ENV.cacheCleanupInterval,
+      });
+
+      await this.fsManager.ensureDirectories();
+      
+      logger.debug('File system manager initialized', {
+        component: 'DocumentationServer',
+        operation: 'init'
+      });
+
+      // Initialize server with proper cleanup handling
+      this.server = new Server(
+        {
+          name: runtime.serverName,
+          version: '1.1.10',
+        },
+        {
+          capabilities: {
+            tools: {},
+            resources: {},
+          },
+        }
+      );
+
+      // Initialize with empty array, will be populated in run()
+      this.docs = [];
+
+      // Set up handlers with proper error boundaries
+      this.setupToolHandlers();
+      this.setupResourceHandlers();
+      this.setupErrorHandlers();
+
+      // Start rate limiter cleanup with proper handle management
+      if (this._cleanupInterval) {
+        clearInterval(this._cleanupInterval);
+      }
+      
+      this._cleanupInterval = setInterval(() => {
+        try {
+          this.rateLimiter.cleanup(ENV.cacheMaxAge);
+        } catch (error) {
+          logger.error('Rate limiter cleanup failed', {
+            component: 'DocumentationServer',
+            operation: 'cleanup',
+            error: error instanceof Error ? error : new Error(String(error))
+          });
+        }
+      }, ENV.cacheCleanupInterval);
+
+      // Ensure the interval doesn't keep the process alive
+      if (this._cleanupInterval && typeof this._cleanupInterval.unref === 'function') {
+        this._cleanupInterval.unref();
+      }
+
+      // Log initial documentation state
+      const categories = [...new Set(this.docs.map(doc => doc.category))];
+      categories.forEach(category => {
+        const docsInCategory = this.docs.filter(doc => doc.category === category);
+        logger.info(`Documentation category: ${category}`, {
+          component: 'DocumentationServer',
+          operation: 'init',
+          docsCount: docsInCategory.length,
+          docs: docsInCategory.map(doc => ({
+            name: doc.name,
+            description: doc.description,
+            tags: doc.tags
+          }))
+        });
+      });
+    } catch (error) {
+      logger.error('Server initialization failed', {
+        component: 'DocumentationServer',
+        operation: 'init',
+        error: error instanceof Error ? error : new Error(String(error))
+      });
+      throw error;
+    }
   }
 
   /**

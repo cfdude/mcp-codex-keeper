@@ -48,27 +48,63 @@ afterEach(async () => {
   // Get all active handles
   const activeHandles = (process as any)._getActiveHandles?.() || [];
   
-  // Clear intervals and timeouts
+  // Get all active handles and timers
   const intervals = (globalObj as any)[Symbol.for('jest-native-timers')] || new Set();
   const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
   
-  // Unref all timers and handles first to prevent blocking
-  [...intervals, ...timeouts, ...activeHandles].forEach((handle: any) => {
-    if (handle && typeof handle.unref === 'function') {
-      handle.unref();
+  // Create a set of all handles to clean up
+  const allHandles = new Set([
+    ...intervals,
+    ...timeouts,
+    ...activeHandles,
+    ...(process as any)._getActiveHandles?.() || []
+  ]);
+  
+  // First unref all handles to prevent blocking
+  allHandles.forEach((handle: any) => {
+    try {
+      if (handle && typeof handle.unref === 'function') {
+        handle.unref();
+      }
+      
+      // Special handling for EventEmitter instances
+      if (handle && typeof handle.removeAllListeners === 'function') {
+        handle.removeAllListeners();
+      }
+    } catch (error) {
+      console.warn('Failed to unref handle:', error);
     }
   });
 
-  // Then clear them
+  // Then clear all timers
   intervals.forEach((interval: any) => {
-    if (interval) {
-      clearInterval(interval);
+    try {
+      if (interval) {
+        clearInterval(interval);
+      }
+    } catch (error) {
+      console.warn('Failed to clear interval:', error);
     }
   });
 
   timeouts.forEach((timeout: any) => {
-    if (timeout) {
-      clearTimeout(timeout);
+    try {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    } catch (error) {
+      console.warn('Failed to clear timeout:', error);
+    }
+  });
+  
+  // Force cleanup of any remaining handles
+  allHandles.forEach((handle: any) => {
+    try {
+      if (handle && typeof handle.destroy === 'function') {
+        handle.destroy();
+      }
+    } catch (error) {
+      console.warn('Failed to destroy handle:', error);
     }
   });
 
