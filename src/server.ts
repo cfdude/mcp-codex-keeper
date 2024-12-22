@@ -1,6 +1,20 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { EventEmitter } from 'events';
+
+// Define types for process._getActiveHandles
+declare global {
+  namespace NodeJS {
+    interface Process {
+      _getActiveHandles(): Array<{
+        constructor: { name: string };
+        unref?: () => void;
+        destroy?: () => void;
+        removeAllListeners?: () => void;
+      }>;
+    }
+  }
+}
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -51,9 +65,11 @@ export class DocumentationServer extends EventEmitter {
    */
   public async cleanup(): Promise<void> {
     try {
-      // Clear all intervals and timeouts first
+      // Stage 1: Stop accepting new operations
+      this.removeAllListeners();
+      
+      // Stage 2: Clear intervals and timeouts
       if (this._cleanupInterval) {
-        // Unref before clearing to prevent blocking
         if (typeof this._cleanupInterval.unref === 'function') {
           this._cleanupInterval.unref();
         }
@@ -61,74 +77,93 @@ export class DocumentationServer extends EventEmitter {
         this._cleanupInterval = undefined;
       }
 
-      // Remove all listeners to prevent new operations
-      this.removeAllListeners();
-      
-      // Wait for any pending operations to complete
-      await Promise.all([
-        new Promise(resolve => setImmediate(resolve)),
-        new Promise(resolve => setTimeout(resolve, 100))
-      ]);
-      
+      // Stage 3: Handle active timers and resources
+      const activeHandles = process._getActiveHandles();
+      activeHandles
+        .filter(handle => handle.constructor.name === 'Timeout')
+        .forEach(timer => {
+          if (typeof timer.unref === 'function') {
+            timer.unref();
+          }
+        });
+
+      // Stage 4: Close server and cleanup resources
+      const cleanupPromises = [];
+
       // Close server if it exists
       if (this.server) {
-        try {
-          await this.server.close();
-        } catch (error) {
-          logger.warn('Error closing server during cleanup', {
-            component: 'DocumentationServer',
-            operation: 'cleanup',
-            error: error instanceof Error ? error : new Error(String(error))
-          });
-        }
+        cleanupPromises.push(
+          (async () => {
+            try {
+              await this.server.close();
+            } catch (error) {
+              logger.warn('Error closing server during cleanup', {
+                component: 'DocumentationServer',
+                operation: 'cleanup',
+                error: error instanceof Error ? error : new Error(String(error))
+              });
+            }
+          })()
+        );
       }
 
       // Clean up all documentation with retries
       const docNames = [...this.docs.map(doc => doc.name)];
       for (const name of docNames) {
-        let retries = 3;
-        while (retries > 0) {
-          try {
-            await this.removeDocumentation(name);
-            break;
-          } catch (error) {
-            retries--;
-            if (retries === 0) {
-              logger.error(`Failed to remove documentation ${name} after retries`, {
-                component: 'DocumentationServer',
-                operation: 'cleanup',
-                error: error instanceof Error ? error : new Error(String(error))
-              });
-            } else {
-              await new Promise(resolve => setTimeout(resolve, 100));
+        cleanupPromises.push(
+          (async () => {
+            let retries = 3;
+            while (retries > 0) {
+              try {
+                await this.removeDocumentation(name);
+                break;
+              } catch (error) {
+                retries--;
+                if (retries === 0) {
+                  logger.error(`Failed to remove documentation ${name} after retries`, {
+                    component: 'DocumentationServer',
+                    operation: 'cleanup',
+                    error: error instanceof Error ? error : new Error(String(error))
+                  });
+                } else {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              }
             }
-          }
-        }
+          })()
+        );
       }
 
       // Clean up file system manager with retries
       if (this.fsManager) {
-        let retries = 3;
-        while (retries > 0) {
-          try {
-            await this.fsManager.destroy();
-            break;
-          } catch (error) {
-            retries--;
-            if (retries === 0) {
-              logger.error('Failed to destroy file system manager after retries', {
-                component: 'DocumentationServer',
-                operation: 'cleanup',
-                error: error instanceof Error ? error : new Error(String(error))
-              });
-            } else {
-              await new Promise(resolve => setTimeout(resolve, 100));
+        cleanupPromises.push(
+          (async () => {
+            let retries = 3;
+            while (retries > 0) {
+              try {
+                await this.fsManager.destroy();
+                break;
+              } catch (error) {
+                retries--;
+                if (retries === 0) {
+                  logger.error('Failed to destroy file system manager after retries', {
+                    component: 'DocumentationServer',
+                    operation: 'cleanup',
+                    error: error instanceof Error ? error : new Error(String(error))
+                  });
+                } else {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              }
             }
-          }
-        }
+          })()
+        );
       }
 
-      // Reset instances
+      // Wait for all cleanup operations to complete
+      await Promise.all(cleanupPromises);
+
+      // Stage 5: Reset instances
       this.contentFetcher = new ContentFetcher({
         maxRetries: 3,
         retryDelay: 2000,
@@ -136,6 +171,11 @@ export class DocumentationServer extends EventEmitter {
       });
       this.rateLimiter = new RateLimiter(DEFAULT_RATE_LIMIT_CONFIG);
       this.docs = [];
+
+      // Stage 6: Force cleanup of any remaining resources
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
 
       logger.debug('DocumentationServer cleanup completed', {
         component: 'DocumentationServer',

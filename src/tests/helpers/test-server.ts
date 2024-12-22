@@ -7,6 +7,20 @@ import path from 'path';
 import fs from 'fs/promises';
 import { logger } from '../../utils/logger.js';
 
+// Define types for process._getActiveHandles
+declare global {
+  namespace NodeJS {
+    interface Process {
+      _getActiveHandles(): Array<{
+        constructor: { name: string };
+        unref?: () => void;
+        destroy?: () => void;
+        removeAllListeners?: () => void;
+      }>;
+    }
+  }
+}
+
 export interface ServerResponse {
   content?: Array<{ type: string; text: string }>;
   headers?: Record<string, string>;
@@ -91,15 +105,70 @@ export class TestServer {
           // Reset to original state
           server.setMaxListeners(originalMaxListeners);
           
-          // Enhanced cleanup with multiple stages and increased timeout
-          await Promise.all([
-            // Stage 1: Immediate operations
-            new Promise(resolve => setImmediate(resolve)),
-            // Stage 2: Short delay for most cleanup operations
-            new Promise(resolve => setTimeout(resolve, 500)),
-            // Stage 3: Extended wait for stubborn cleanup
+          // Enhanced cleanup with active handle management and staged timeouts
+          const cleanupPromises = [];
+          
+          // Stage 1: Remove all listeners and cleanup server
+          cleanupPromises.push(
+            new Promise<void>(async (resolve) => {
+              try {
+                // Remove all listeners for each event
+                server.eventNames().forEach(event => {
+                  server.removeAllListeners(event);
+                });
+                
+                // Cleanup server resources
+                if (typeof server.cleanup === 'function') {
+                  await server.cleanup();
+                }
+                
+                resolve();
+              } catch (error) {
+                logger.error('Error during listener cleanup:', {
+                  component: 'TestServer',
+                  operation: 'cleanup',
+                  error: error instanceof Error ? error : new Error(String(error))
+                });
+                resolve();
+              }
+            })
+          );
+          
+          // Stage 2: Handle active timers and resources
+          cleanupPromises.push(
+            new Promise<void>(resolve => {
+              try {
+                // Get and unref all active handles
+                const activeHandles = process._getActiveHandles();
+                activeHandles.forEach(handle => {
+                  if (handle && typeof handle.unref === 'function') {
+                    handle.unref();
+                  }
+                });
+                
+                // Force cleanup of remaining handles
+                if (typeof global.gc === 'function') {
+                  global.gc();
+                }
+                
+                resolve();
+              } catch (error) {
+                logger.error('Error during handle cleanup:', {
+                  component: 'TestServer',
+                  operation: 'cleanup',
+                  error: error instanceof Error ? error : new Error(String(error))
+                });
+                resolve();
+              }
+            })
+          );
+          
+          // Stage 3: Final cleanup with extended timeout
+          cleanupPromises.push(
             new Promise(resolve => setTimeout(resolve, 2000))
-          ]);
+          );
+          
+          await Promise.all(cleanupPromises);
           
           // Final verification of cleanup with detailed logging
           const remainingEvents = server.eventNames();

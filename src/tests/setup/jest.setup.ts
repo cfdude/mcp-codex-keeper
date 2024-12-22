@@ -1,5 +1,20 @@
 import 'jest-extended';
 import { mockDeep, mockReset } from 'jest-mock-extended';
+import { logger } from '../../utils/logger.js';
+
+// Define types for process._getActiveHandles
+declare global {
+  namespace NodeJS {
+    interface Process {
+      _getActiveHandles(): Array<{
+        constructor: { name: string };
+        unref?: () => void;
+        destroy?: () => void;
+        removeAllListeners?: () => void;
+      }>;
+    }
+  }
+}
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -108,19 +123,59 @@ afterEach(async () => {
     }
   });
 
-  // Wait for any pending promises and ensure file system operations complete
-  await Promise.all([
-    new Promise(resolve => setImmediate(resolve)),
-    // Increase timeout to ensure all cleanup operations complete
-    new Promise(resolve => setTimeout(resolve, 1000)),
-    // Add forced garbage collection to help clean up resources
-    new Promise(resolve => {
+  // Enhanced cleanup strategy with active handle tracking
+  const cleanupPromises = [];
+  
+  // Stage 1: Handle active timers and resources
+  cleanupPromises.push(
+    new Promise<void>(resolve => {
+      try {
+        const activeHandles = process._getActiveHandles();
+        
+        // Unref all timers to prevent them from keeping the process alive
+        activeHandles
+          .filter(handle => handle.constructor.name === 'Timeout')
+          .forEach(timer => {
+            if (typeof timer.unref === 'function') {
+              timer.unref();
+            }
+          });
+        
+        // Unref any remaining handles
+        activeHandles.forEach(handle => {
+          if (handle && typeof handle.unref === 'function') {
+            handle.unref();
+          }
+        });
+        
+        resolve();
+      } catch (error) {
+        logger.error('Error during handle cleanup:', {
+          component: 'JestSetup',
+          operation: 'cleanup',
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+        resolve();
+      }
+    })
+  );
+  
+  // Stage 2: Force cleanup and garbage collection
+  cleanupPromises.push(
+    new Promise<void>(resolve => {
       if (typeof global.gc === 'function') {
         global.gc();
       }
-      resolve(undefined);
+      resolve();
     })
-  ]);
+  );
+  
+  // Stage 3: Final wait for any remaining operations
+  cleanupPromises.push(
+    new Promise(resolve => setTimeout(resolve, 2000))
+  );
+  
+  await Promise.all(cleanupPromises);
   
   // Additional cleanup for any stray test directories
   try {
