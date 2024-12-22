@@ -61,15 +61,25 @@ export class TestServer {
       
       // Add cleanup hook for this test instance
       afterEach(async () => {
-        // Reset max listeners to original value
-        server.setMaxListeners(originalMaxListeners);
-        
-        // Remove all listeners
-        server.removeAllListeners();
-        
-        // Ensure all event emitters are properly cleaned up
-        if (typeof server.cleanup === 'function') {
-          await server.cleanup();
+        try {
+          // Ensure all event emitters are properly cleaned up first
+          if (typeof server.cleanup === 'function') {
+            await server.cleanup();
+          }
+          
+          // Then reset max listeners and remove any remaining listeners
+          server.setMaxListeners(originalMaxListeners);
+          server.removeAllListeners();
+          
+          // Wait for any remaining operations
+          await new Promise(resolve => setImmediate(resolve));
+        } catch (error) {
+          logger.error('Failed to cleanup test server', {
+            component: 'TestServer',
+            operation: 'cleanup',
+            error: error instanceof Error ? error : new Error(String(error))
+          });
+          throw error;
         }
       });
     }

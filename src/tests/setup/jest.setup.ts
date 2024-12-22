@@ -45,24 +45,26 @@ afterEach(async () => {
   // Clear all intervals and timeouts
   const globalObj = typeof window !== 'undefined' ? window : global;
   
-  // Clear intervals
+  // Clear intervals and timeouts
   const intervals = (globalObj as any)[Symbol.for('jest-native-timers')] || new Set();
+  const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
+  
+  // Unref all timers first to prevent blocking
+  [...intervals, ...timeouts].forEach((timer: any) => {
+    if (timer && typeof timer.unref === 'function') {
+      timer.unref();
+    }
+  });
+
+  // Then clear them
   intervals.forEach((interval: any) => {
     if (interval) {
-      if (typeof interval.unref === 'function') {
-        interval.unref();
-      }
       clearInterval(interval);
     }
   });
 
-  // Clear timeouts
-  const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
   timeouts.forEach((timeout: any) => {
     if (timeout) {
-      if (typeof timeout.unref === 'function') {
-        timeout.unref();
-      }
       clearTimeout(timeout);
     }
   });

@@ -51,17 +51,24 @@ export class DocumentationServer extends EventEmitter {
    */
   public async cleanup(): Promise<void> {
     try {
-      // Wait for any pending operations to complete
-      await new Promise(resolve => setImmediate(resolve));
-
-      // Clear all intervals and timeouts
+      // Clear all intervals and timeouts first
       if (this._cleanupInterval) {
+        // Unref before clearing to prevent blocking
+        if (typeof this._cleanupInterval.unref === 'function') {
+          this._cleanupInterval.unref();
+        }
         clearInterval(this._cleanupInterval);
         this._cleanupInterval = undefined;
       }
 
-      // Remove all listeners first to prevent new operations
+      // Remove all listeners to prevent new operations
       this.removeAllListeners();
+      
+      // Wait for any pending operations to complete
+      await Promise.all([
+        new Promise(resolve => setImmediate(resolve)),
+        new Promise(resolve => setTimeout(resolve, 100))
+      ]);
       
       // Close server if it exists
       if (this.server) {
