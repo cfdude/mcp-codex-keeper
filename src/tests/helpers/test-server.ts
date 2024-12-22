@@ -6,6 +6,17 @@ import { DocSource, ValidCategory } from '../../types/index.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { logger } from '../../utils/logger.js';
+// Define worker handle type
+interface WorkerHandle {
+  constructor: { name: string };
+  terminate?: () => Promise<void>;
+  destroy?: () => void;
+  unref?: () => void;
+  removeAllListeners?: () => void;
+}
+
+// Remove unused import
+
 
 // Define types for process._getActiveHandles
 declare global {
@@ -333,8 +344,43 @@ export class TestServer {
             global.gc();
           }
           
-          // Final wait for any cleanup operations
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Final wait for any cleanup operations with worker check
+          await new Promise<void>(resolve => {
+            const finalCheck = async () => {
+              // Wait for immediate operations
+              await new Promise<void>(r => setTimeout(r, 1000));
+              
+              // Final check for worker threads
+              const remainingWorkers = (process._getActiveHandles?.()
+                ?.filter(handle => 
+                  handle?.constructor?.name === 'Worker'
+                ) || []) as WorkerHandle[];
+                
+              for (const worker of remainingWorkers) {
+                try {
+                  if (worker.terminate) {
+                    await worker.terminate();
+                  } else if (worker.destroy) {
+                    worker.destroy();
+                  }
+                } catch (error) {
+                  logger.warn('Failed to terminate worker in final check', {
+                    error: error instanceof Error ? error : new Error(String(error))
+                  });
+                }
+              }
+              
+              // Final wait to ensure cleanup
+              await new Promise<void>(r => setTimeout(r, 1000));
+              resolve();
+            };
+            finalCheck().catch(error => {
+              logger.error('Error in final cleanup check', {
+                error: error instanceof Error ? error : new Error(String(error))
+              });
+              resolve();
+            });
+          });
         };
         
         await finalCleanup();

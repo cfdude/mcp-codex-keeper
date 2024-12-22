@@ -2,6 +2,15 @@ import 'jest-extended';
 import { mockDeep, mockReset } from 'jest-mock-extended';
 import { logger } from '../../utils/logger.js';
 
+// Define types for handles and workers
+interface WorkerHandle {
+  constructor: { name: string };
+  terminate?: () => Promise<void>;
+  destroy?: () => void;
+  unref?: () => void;
+  removeAllListeners?: () => void;
+}
+
 // Define types for process._getActiveHandles
 declare global {
   namespace NodeJS {
@@ -254,7 +263,26 @@ afterEach(async () => {
         }
         
         // Finally wait for any remaining async operations
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise<void>(r => setTimeout(r, 1000));
+        
+        // Check for any remaining worker threads
+        const remainingWorkers = (process._getActiveHandles?.()
+          ?.filter(handle => handle?.constructor?.name === 'Worker') || []) as WorkerHandle[];
+          
+        for (const worker of remainingWorkers) {
+          try {
+            if (worker.terminate) {
+              await worker.terminate();
+            } else if (worker.destroy) {
+              worker.destroy();
+            }
+          } catch (error) {
+            logger.warn('Failed to terminate worker in final cleanup', {
+              error: error instanceof Error ? error : new Error(String(error))
+            });
+          }
+        }
+        
         resolve();
       };
       cleanup();
