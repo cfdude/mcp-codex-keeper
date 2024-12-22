@@ -98,28 +98,53 @@ afterEach(async () => {
   }
   activeWorkers.clear();
 
-  // Clear all intervals and timeouts
+  // Clear all intervals and timeouts with enhanced error handling
   const globalObj = typeof window !== 'undefined' ? window : global;
-  
-  // Get all active handles and timers
-  const activeHandles = process._getActiveHandles?.() || [];
-  const timers = activeHandles.filter(handle => handle.constructor.name === 'Timeout');
-  
-  // First unref all timers
-  for (const timer of timers) {
-    if (timer.unref) timer.unref();
-  }
-  
   const intervals = (globalObj as any)[Symbol.for('jest-native-timers')] || new Set();
   const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
+  let activeHandles: Array<{ constructor: { name: string }; unref?: () => void; destroy?: () => void }> = [];
   
-  // Create a set of all handles to clean up
-  const allHandles = new Set([
-    ...intervals,
-    ...timeouts,
-    ...activeHandles,
-    ...(process as any)._getActiveHandles?.() || []
-  ]);
+  try {
+    // Get all active handles and timers
+    activeHandles = process._getActiveHandles?.() || [];
+    const timers = activeHandles.filter(handle => 
+      handle.constructor.name === 'Timeout' || 
+      handle.constructor.name === 'Interval'
+    );
+    
+    // First unref all timers with error handling
+    for (const timer of timers) {
+      try {
+        if (timer.unref) timer.unref();
+        if (timer.destroy) timer.destroy();
+      } catch (error) {
+        logger.warn('Failed to cleanup timer', {
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to get active handles', {
+      error: error instanceof Error ? error : new Error(String(error))
+    });
+  }
+  
+  // Create a set of all handles to clean up with error handling
+  const allHandles = new Set<any>();
+  try {
+    const handles = [
+      ...(Array.from(intervals) || []),
+      ...(Array.from(timeouts) || []),
+      ...activeHandles
+    ];
+    handles.forEach(handle => {
+      if (handle) allHandles.add(handle);
+    });
+  } catch (error) {
+    logger.warn('Failed to gather handles', {
+      error: error instanceof Error ? error : new Error(String(error))
+    });
+  }
   
   // First unref all handles to prevent blocking
   allHandles.forEach((handle: any) => {

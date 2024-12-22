@@ -233,17 +233,39 @@ export class TestServer {
           
           // Set a timeout for cleanup
           const timeoutId = setTimeout(() => {
-            console.warn('Server cleanup timeout reached');
+            logger.warn('Server cleanup timeout reached');
             cleanup();
           }, 5000);
-          
-          // Attempt graceful shutdown
-          if (server.close) {
-            server.close(() => {
+
+          // Attempt cleanup
+          try {
+            // Remove all event listeners
+            server.eventNames().forEach(event => {
+              server.removeAllListeners(event);
+            });
+
+            // Call cleanup method if available
+            if (typeof server.cleanup === 'function') {
+              Promise.resolve(server.cleanup())
+                .then(() => {
+                  clearTimeout(timeoutId);
+                  cleanup();
+                })
+                .catch(error => {
+                  logger.warn('Error during server cleanup', {
+                    error: error instanceof Error ? error : new Error(String(error))
+                  });
+                  clearTimeout(timeoutId);
+                  cleanup();
+                });
+            } else {
               clearTimeout(timeoutId);
               cleanup();
+            }
+          } catch (error) {
+            logger.warn('Error during server cleanup', {
+              error: error instanceof Error ? error : new Error(String(error))
             });
-          } else {
             clearTimeout(timeoutId);
             cleanup();
           }
@@ -253,7 +275,7 @@ export class TestServer {
         const resourceCleanupPromises = Array.from(serverResources).map(resource => {
           return new Promise<void>((resolve) => {
             const timeoutId = setTimeout(() => {
-              console.warn('Resource cleanup timeout reached');
+              logger.warn('Resource cleanup timeout reached');
               resolve();
             }, 1000);
 
