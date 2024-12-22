@@ -196,6 +196,70 @@ export class TestServer {
       });
     }
 
+    // Define types for server resources
+    interface CleanableResource {
+      cleanup?: () => Promise<void>;
+      [key: string]: any; // Allow other properties
+    }
+
+    // Track server-specific resources with proper typing
+    const serverResources = new Set<CleanableResource>();
+
+    // Access protected methods using type assertion with proper typing
+    type AddDocumentationFn = (...args: any[]) => Promise<CleanableResource | undefined>;
+    const serverInstance = server as unknown as {
+      addDocumentation: AddDocumentationFn;
+    };
+
+    // Store original method
+    const originalAddDoc = serverInstance.addDocumentation.bind(server);
+
+    // Override with tracking
+    serverInstance.addDocumentation = async (...args: Parameters<AddDocumentationFn>) => {
+      const result = await originalAddDoc(...args);
+      if (result) serverResources.add(result);
+      return result;
+    };
+
+    // Enhanced cleanup for server resources
+    afterEach(async () => {
+      try {
+        // Stage 1: Stop all server operations
+        await new Promise<void>((resolve) => {
+          server.removeAllListeners();
+          resolve();
+        });
+
+        // Stage 2: Clean up tracked resources
+        for (const resource of serverResources) {
+          try {
+            if (typeof resource.cleanup === 'function') {
+              await resource.cleanup();
+            }
+          } catch (error) {
+            const logError = error instanceof Error ? error : new Error(String(error));
+            logger.warn('Failed to cleanup resource:', {
+              resourceType: typeof resource,
+              error: logError
+            });
+          }
+        }
+        serverResources.clear();
+
+        // Stage 3: Final cleanup
+        if (typeof global.gc === 'function') {
+          global.gc();
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        const logError = error instanceof Error ? error : new Error(String(error));
+        logger.error('Failed to cleanup server resources:', {
+          error: logError
+        });
+        throw error;
+      }
+    });
+
     // Set up MCP protocol handlers
     const listToolsHandler: ServerHandler = async () => ({
       content: [{ type: 'text', text: JSON.stringify([]) }], // Empty array as we don't have tools in test environment

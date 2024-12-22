@@ -76,7 +76,37 @@ export const createTestEnvironment = async (prefix?: string) => {
     }
   });
 
-  return { testDir };
+  // Return both testDir and cleanup function
+  const cleanup = async () => {
+    try {
+      // Wait for any pending operations
+      await Promise.all([
+        new Promise(resolve => setImmediate(resolve)),
+        new Promise(resolve => setTimeout(resolve, 100))
+      ]);
+
+      // Clean up test directory with retries
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          await cleanupTestDir(testDir);
+          break;
+        } catch (error) {
+          if (retries === 1) throw error;
+          retries--;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      // Restore environment
+      process.env = originalEnv;
+    } catch (error) {
+      console.error('Failed to cleanup test environment:', error);
+      throw error;
+    }
+  };
+
+  return { testDir, cleanup };
 };
 
 /**

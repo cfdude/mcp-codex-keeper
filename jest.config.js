@@ -2,6 +2,9 @@
 const config = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
+  detectOpenHandles: true,
+  forceExit: false,
+  setupFilesAfterEnv: ['<rootDir>/src/tests/setup/jest.setup.ts'],
   roots: ['<rootDir>/src'],
   testMatch: ['**/tests/**/*.test.ts'],
   collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/**/__tests__/**'],

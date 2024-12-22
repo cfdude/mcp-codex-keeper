@@ -47,6 +47,37 @@ global.console = {
   error: jest.fn(),
 };
 
+// Import required modules
+import { Worker, MessagePort } from 'worker_threads';
+
+// Define types for tracking
+type TrackedWorker = Worker & {
+  terminate(): void;
+  postMessage(value: any, transferList?: ReadonlyArray<MessagePort | ArrayBuffer>): void;
+  ref(): void;
+  unref(): void;
+};
+
+// Track active handles and resources
+const activeHandles = new Set();
+const activeWorkers = new Set<TrackedWorker>();
+
+// Monkey patch worker_threads to track workers
+try {
+  const worker_threads = require('worker_threads');
+  const originalWorker = worker_threads.Worker;
+  worker_threads.Worker = function (...args: ConstructorParameters<typeof Worker>) {
+    const worker = new originalWorker(...args) as TrackedWorker;
+    activeWorkers.add(worker);
+    worker.on('exit', () => {
+      activeWorkers.delete(worker);
+    });
+    return worker;
+  };
+} catch (error) {
+  console.warn('Failed to patch worker_threads:', error instanceof Error ? error.message : String(error));
+}
+
 // Clean up after each test
 afterEach(async () => {
   // Restore all mocks
@@ -56,6 +87,16 @@ afterEach(async () => {
 
   // Clear all timers
   jest.clearAllTimers();
+
+  // Terminate any active workers
+  for (const worker of activeWorkers) {
+    try {
+      worker.terminate();
+    } catch (error) {
+      console.warn('Failed to terminate worker:', error);
+    }
+  }
+  activeWorkers.clear();
 
   // Clear all intervals and timeouts
   const globalObj = typeof window !== 'undefined' ? window : global;

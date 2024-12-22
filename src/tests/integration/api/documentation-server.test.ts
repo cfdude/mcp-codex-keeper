@@ -14,7 +14,12 @@ describe('Documentation Server API Integration', () => {
   });
 
   afterEach(async () => {
-    await env.cleanup();
+    try {
+      await env.cleanup();
+    } catch (error) {
+      console.error('Failed to cleanup test environment:', error);
+      throw error;
+    }
   });
 
   describe('Documentation Management', () => {
