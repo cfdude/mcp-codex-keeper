@@ -224,33 +224,76 @@ export class TestServer {
     // Enhanced cleanup for server resources
     afterEach(async () => {
       try {
-        // Stage 1: Stop all server operations
+        // Stage 1: Stop all server operations and remove listeners
         await new Promise<void>((resolve) => {
-          server.removeAllListeners();
-          resolve();
+          const cleanup = () => {
+            server.removeAllListeners();
+            resolve();
+          };
+          
+          // Set a timeout for cleanup
+          const timeoutId = setTimeout(() => {
+            console.warn('Server cleanup timeout reached');
+            cleanup();
+          }, 5000);
+          
+          // Attempt graceful shutdown
+          if (server.close) {
+            server.close(() => {
+              clearTimeout(timeoutId);
+              cleanup();
+            });
+          } else {
+            clearTimeout(timeoutId);
+            cleanup();
+          }
         });
 
-        // Stage 2: Clean up tracked resources
-        for (const resource of serverResources) {
-          try {
+        // Stage 2: Clean up tracked resources with timeout
+        const resourceCleanupPromises = Array.from(serverResources).map(resource => {
+          return new Promise<void>((resolve) => {
+            const timeoutId = setTimeout(() => {
+              console.warn('Resource cleanup timeout reached');
+              resolve();
+            }, 1000);
+
             if (typeof resource.cleanup === 'function') {
-              await resource.cleanup();
+              Promise.resolve(resource.cleanup())
+                .then(() => {
+                  clearTimeout(timeoutId);
+                  resolve();
+                })
+                .catch(error => {
+                  const logError = error instanceof Error ? error : new Error(String(error));
+                  logger.warn('Failed to cleanup resource:', {
+                    resourceType: typeof resource,
+                    error: logError
+                  });
+                  clearTimeout(timeoutId);
+                  resolve();
+                });
+            } else {
+              clearTimeout(timeoutId);
+              resolve();
             }
-          } catch (error) {
-            const logError = error instanceof Error ? error : new Error(String(error));
-            logger.warn('Failed to cleanup resource:', {
-              resourceType: typeof resource,
-              error: logError
-            });
-          }
-        }
+          });
+        });
+
+        await Promise.all(resourceCleanupPromises);
         serverResources.clear();
 
-        // Stage 3: Final cleanup
+        // Stage 3: Clean up any remaining handles
+        const handles = process._getActiveHandles?.() || [];
+        for (const handle of handles) {
+          if (handle?.unref) handle.unref();
+          if (handle?.destroy) handle.destroy();
+        }
+
+        // Stage 4: Force garbage collection and final wait
         if (typeof global.gc === 'function') {
           global.gc();
         }
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setImmediate(resolve));
       } catch (error) {
         const logError = error instanceof Error ? error : new Error(String(error));
         logger.error('Failed to cleanup server resources:', {

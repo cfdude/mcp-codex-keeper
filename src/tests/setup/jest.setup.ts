@@ -101,10 +101,15 @@ afterEach(async () => {
   // Clear all intervals and timeouts
   const globalObj = typeof window !== 'undefined' ? window : global;
   
-  // Get all active handles
-  const activeHandles = (process as any)._getActiveHandles?.() || [];
-  
   // Get all active handles and timers
+  const activeHandles = process._getActiveHandles?.() || [];
+  const timers = activeHandles.filter(handle => handle.constructor.name === 'Timeout');
+  
+  // First unref all timers
+  for (const timer of timers) {
+    if (timer.unref) timer.unref();
+  }
+  
   const intervals = (globalObj as any)[Symbol.for('jest-native-timers')] || new Set();
   const timeouts = (globalObj as any)[Symbol.for('jest-native-timeouts')] || new Set();
   

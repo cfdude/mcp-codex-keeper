@@ -52,7 +52,7 @@ const config = {
   testTimeout: 60000,
   maxWorkers: '50%',
   detectOpenHandles: true,
-  forceExit: true,
+  forceExit: false,
   transformIgnorePatterns: ['/node_modules/(?!(@modelcontextprotocol|zod)/.*)'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
