@@ -262,8 +262,8 @@ afterEach(async () => {
           global.gc();
         }
         
-        // Finally wait for any remaining async operations
-        await new Promise<void>(r => setTimeout(r, 1000));
+        // Extended wait for any remaining async operations
+        await new Promise<void>(r => setTimeout(r, 5000));
         
         // Check for any remaining worker threads that are safe to cleanup
         const remainingWorkers = (process._getActiveHandles?.()
@@ -271,17 +271,20 @@ afterEach(async () => {
             // Only cleanup workers that are marked as completed or errored
             if (handle?.constructor?.name === 'Worker') {
               const worker = handle as WorkerHandle & { threadId?: number; getState?: () => string; isRunning?: boolean };
-              // Check if worker is in a state safe for cleanup
+              // Enhanced state checking for safer cleanup
               const workerState = worker.getState?.();
-              return workerState === 'stopped' || workerState === 'errored' || worker.isRunning === false;
+              const isExited = (worker as any).exitCode !== undefined && (worker as any).exitCode !== null;
+              const isStopped = workerState === 'stopped' || workerState === 'errored';
+              const isNotRunning = worker.isRunning === false;
+              return isExited || isStopped || isNotRunning;
             }
             return false;
           }) || []) as WorkerHandle[];
           
         for (const worker of remainingWorkers) {
           try {
-            // Give workers a chance to cleanup gracefully
-            await new Promise<void>(resolve => setTimeout(resolve, 100));
+            // Extended grace period for worker cleanup
+            await new Promise<void>(resolve => setTimeout(resolve, 2000));
             
             if (worker.terminate) {
               await worker.terminate();

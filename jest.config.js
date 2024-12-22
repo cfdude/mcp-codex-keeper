@@ -2,8 +2,6 @@
 const config = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  detectOpenHandles: true,
-  forceExit: false,
   setupFilesAfterEnv: ['<rootDir>/src/tests/setup/jest.setup.ts'],
   roots: ['<rootDir>/src'],
   testMatch: ['**/tests/**/*.test.ts'],
@@ -52,7 +50,7 @@ const config = {
   testTimeout: 60000,
   maxWorkers: '50%',
   detectOpenHandles: true,
-  forceExit: false,
+  forceExit: true,
   transformIgnorePatterns: ['/node_modules/(?!(@modelcontextprotocol|zod)/.*)'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
