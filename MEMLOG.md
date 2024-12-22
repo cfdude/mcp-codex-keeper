@@ -433,6 +433,21 @@ Based on MCP development guidelines, we still need to implement:
 - Jest Testing Guide
 - Security Best Practices
 
+### Merge Updates (2024-01-09)
+
+#### Changes from devin's PR (fix-test-cleanup)
+
+1. CI Improvements:
+
+   - Added Node.js 16.x support to test matrix
+   - Now testing across Node.js 16.x, 18.x, and 20.x versions
+   - Enhanced compatibility testing coverage
+
+2. Memory Management:
+   - Added destroy() method to FileSystemManager
+   - Implemented proper cleanup of cache timer
+   - Prevents potential memory leaks in long-running instances
+
 ### Test Issues Analysis (2024-12-21)
 
 #### Current Test Failures
