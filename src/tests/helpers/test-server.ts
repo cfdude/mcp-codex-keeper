@@ -86,9 +86,14 @@ export interface MockServer {
 
 export class TestServer {
   private mockHandlers: Map<string, ServerHandler>;
-  private mockServer: MockServer;
-  private server: DocumentationServer;
+  private mockServer!: MockServer;
+  private server: DocumentationServer & EventEmitter;
   private resources: Map<string, { content: string; lastUpdated: string }>;
+  private static originalMaxListeners: number = 0;
+  private static originalListeners: Map<string | symbol, Function[]> = new Map();
+  public registerServerCleanup: () => void = () => {
+    throw new Error('registerServerCleanup not initialized');
+  };
 
   private constructor(server: DocumentationServer) {
     this.server = server;
@@ -110,129 +115,146 @@ export class TestServer {
         originalListeners.set(event, server.listeners(event));
       });
       
-      // Add comprehensive cleanup hook
-      afterEach(async () => {
-        try {
-          // First remove all test-specific listeners
-          server.eventNames().forEach(event => {
-            const originalEventListeners = originalListeners.get(event) || [];
-            const currentListeners = server.listeners(event);
-            
-            // Remove only the listeners that were added during the test
-            currentListeners.forEach(listener => {
-              if (!originalEventListeners.includes(listener)) {
-                server.removeListener(event, listener as (...args: any[]) => void);
-              }
-            });
+      // Initialize static fields
+      if (!TestServer.originalListeners) {
+        TestServer.originalListeners = new Map();
+      }
+      TestServer.originalMaxListeners = server.getMaxListeners();
+
+      // Create cleanup registration function
+      this.registerServerCleanup = () => {
+        beforeAll(() => {
+          // Store original state
+          server.eventNames().forEach((event: string | symbol) => {
+            TestServer.originalListeners.set(event, server.listeners(event));
           });
-          
-          // Then perform server cleanup
-          if (typeof server.cleanup === 'function') {
-            await server.cleanup();
-          }
-          
-          // Reset to original state
-          server.setMaxListeners(originalMaxListeners);
-          
-          // Enhanced cleanup with active handle management and staged timeouts
-          const cleanupPromises = [];
-          
-          // Stage 1: Remove all listeners and cleanup server
-          cleanupPromises.push(
-            new Promise<void>(resolve => {
-              const cleanup = async () => {
+        });
+
+        afterEach(async () => {
+          try {
+            // First remove all test-specific listeners
+            server.eventNames().forEach((event: string | symbol) => {
+              const originalEventListeners = TestServer.originalListeners.get(event) || [];
+              const currentListeners = server.listeners(event);
+              
+              // Remove only the listeners that were added during the test
+              currentListeners.forEach(listener => {
+                if (!originalEventListeners.includes(listener)) {
+                  server.removeListener(event, listener as (...args: any[]) => void);
+                }
+              });
+            });
+            
+            // Then perform server cleanup
+            if (typeof server.cleanup === 'function') {
+              await server.cleanup();
+            }
+            
+            // Reset to original state
+            server.setMaxListeners(TestServer.originalMaxListeners);
+            
+            // Enhanced cleanup with active handle management and staged timeouts
+            const cleanupPromises = [];
+            
+            // Stage 1: Remove all listeners and cleanup server
+            cleanupPromises.push(
+              new Promise<void>(resolve => {
+                const cleanup = async () => {
+                  try {
+                    // Remove all listeners for each event
+                    server.eventNames().forEach(event => {
+                      server.removeAllListeners(event);
+                    });
+                    
+                    // Cleanup server resources
+                    if (typeof server.cleanup === 'function') {
+                      await server.cleanup();
+                    }
+                    
+                    resolve();
+                  } catch (error) {
+                    logger.error('Error during listener cleanup:', {
+                      component: 'TestServer',
+                      operation: 'cleanup',
+                      error: error instanceof Error ? error : new Error(String(error))
+                    });
+                    resolve();
+                  }
+                };
+                cleanup().catch(error => {
+                  logger.error('Error in cleanup IIFE:', {
+                    component: 'TestServer',
+                    operation: 'cleanup',
+                    error: error instanceof Error ? error : new Error(String(error))
+                  });
+                  resolve();
+                });
+              })
+            );
+            
+            // Stage 2: Handle active timers and resources
+            cleanupPromises.push(
+              new Promise<void>(resolve => {
                 try {
-                  // Remove all listeners for each event
-                  server.eventNames().forEach(event => {
-                    server.removeAllListeners(event);
+                  // Get and unref all active handles
+                  const activeHandles = process._getActiveHandles();
+                  activeHandles.forEach(handle => {
+                    if (handle && typeof handle.unref === 'function') {
+                      handle.unref();
+                    }
                   });
                   
-                  // Cleanup server resources
-                  if (typeof server.cleanup === 'function') {
-                    await server.cleanup();
+                  // Force cleanup of remaining handles
+                  if (typeof global.gc === 'function') {
+                    global.gc();
                   }
                   
                   resolve();
                 } catch (error) {
-                  logger.error('Error during listener cleanup:', {
+                  logger.error('Error during handle cleanup:', {
                     component: 'TestServer',
                     operation: 'cleanup',
                     error: error instanceof Error ? error : new Error(String(error))
                   });
                   resolve();
                 }
-              };
-              cleanup().catch(error => {
-                logger.error('Error in cleanup IIFE:', {
-                  component: 'TestServer',
-                  operation: 'cleanup',
-                  error: error instanceof Error ? error : new Error(String(error))
-                });
-                resolve();
-              });
-            })
-          );
-          
-          // Stage 2: Handle active timers and resources
-          cleanupPromises.push(
-            new Promise<void>(resolve => {
-              try {
-                // Get and unref all active handles
-                const activeHandles = process._getActiveHandles();
-                activeHandles.forEach(handle => {
-                  if (handle && typeof handle.unref === 'function') {
-                    handle.unref();
-                  }
-                });
-                
-                // Force cleanup of remaining handles
-                if (typeof global.gc === 'function') {
-                  global.gc();
-                }
-                
-                resolve();
-              } catch (error) {
-                logger.error('Error during handle cleanup:', {
-                  component: 'TestServer',
-                  operation: 'cleanup',
-                  error: error instanceof Error ? error : new Error(String(error))
-                });
-                resolve();
-              }
-            })
-          );
-          
-          // Stage 3: Final cleanup with extended timeout
-          cleanupPromises.push(
-            new Promise(resolve => setTimeout(resolve, 2000))
-          );
-          
-          await Promise.all(cleanupPromises);
-          
-          // Final verification of cleanup with detailed logging
-          const remainingEvents = server.eventNames();
-          if (remainingEvents.length > 0) {
-            const remainingListenerCounts = remainingEvents.map(event => ({
-              event: event.toString(),
-              count: server.listeners(event).length
-            }));
+              })
+            );
             
-            logger.warn('Some listeners remained after cleanup', {
+            // Stage 3: Final cleanup with extended timeout
+            cleanupPromises.push(
+              new Promise(resolve => setTimeout(resolve, 2000))
+            );
+            
+            await Promise.all(cleanupPromises);
+            
+            // Final verification of cleanup with detailed logging
+            const remainingEvents = server.eventNames();
+            if (remainingEvents.length > 0) {
+              const remainingListenerCounts = remainingEvents.map(event => ({
+                event: event.toString(),
+                count: server.listeners(event).length
+              }));
+              
+              logger.warn('Some listeners remained after cleanup', {
+                component: 'TestServer',
+                operation: 'cleanup',
+                remainingListenerCounts,
+                totalEvents: remainingEvents.length
+              });
+            }
+          } catch (error) {
+            logger.error('Failed to cleanup test server', {
               component: 'TestServer',
               operation: 'cleanup',
-              remainingListenerCounts,
-              totalEvents: remainingEvents.length
+              error: error instanceof Error ? error : new Error(String(error))
             });
+            throw error;
           }
-        } catch (error) {
-          logger.error('Failed to cleanup test server', {
-            component: 'TestServer',
-            operation: 'cleanup',
-            error: error instanceof Error ? error : new Error(String(error))
-          });
-          throw error;
-        }
-      });
+        });
+      };
+
+      // No return needed in constructor
     }
 
     // Define types for server resources
@@ -267,10 +289,10 @@ export class TestServer {
         await new Promise<void>((resolve) => {
           const cleanup = () => {
             // Only remove test-specific listeners, preserve core operation listeners
-            const eventNames = server.eventNames();
+            const eventNames = (server as EventEmitter).eventNames();
             const coreEvents = ['worker', 'message', 'error', 'exit'];
             
-            eventNames.forEach(event => {
+            eventNames.forEach((event: string | symbol) => {
               if (!coreEvents.includes(event.toString())) {
                 server.removeAllListeners(event);
               }
@@ -287,8 +309,8 @@ export class TestServer {
           // Attempt cleanup
           try {
             // Remove all event listeners
-            server.eventNames().forEach(event => {
-              server.removeAllListeners(event);
+            (server as EventEmitter).eventNames().forEach((event: string | symbol) => {
+              (server as EventEmitter).removeAllListeners(event);
             });
 
             // Call cleanup method if available

@@ -49,34 +49,7 @@ export const createTestEnvironment = async (prefix?: string) => {
     NODE_ENV: 'test',
   };
 
-  // Register cleanup in afterEach to ensure it runs even if test fails
-  afterEach(async () => {
-    try {
-      // Wait for any pending operations
-      await Promise.all([
-        new Promise(resolve => setImmediate(resolve)),
-        new Promise(resolve => setTimeout(resolve, 100))
-      ]);
-
-      // Clean up test directory with retries
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          await cleanupTestDir(testDir);
-          break;
-        } catch (error) {
-          if (retries === 1) throw error;
-          retries--;
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-    } finally {
-      // Always restore environment
-      process.env = originalEnv;
-    }
-  });
-
-  // Return both testDir and cleanup function
+  // Create cleanup function
   const cleanup = async () => {
     try {
       // Wait for any pending operations
@@ -106,7 +79,52 @@ export const createTestEnvironment = async (prefix?: string) => {
     }
   };
 
-  return { testDir, cleanup };
+  return { 
+    testDir, 
+    cleanup,
+    registerCleanup: () => {
+      beforeAll(() => {
+        // Reset environment at start of test suite
+        process.env = {
+          ...originalEnv,
+          MCP_ENV: 'test',
+          STORAGE_PATH: testDir,
+          NODE_ENV: 'test',
+        };
+      });
+
+      afterEach(async () => {
+        try {
+          // Wait for any pending operations
+          await Promise.all([
+            new Promise(resolve => setImmediate(resolve)),
+            new Promise(resolve => setTimeout(resolve, 100))
+          ]);
+
+          // Clean up test directory with retries
+          let retries = 3;
+          while (retries > 0) {
+            try {
+              await cleanupTestDir(testDir);
+              break;
+            } catch (error) {
+              if (retries === 1) throw error;
+              retries--;
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
+        } finally {
+          // Always restore environment
+          process.env = originalEnv;
+        }
+      });
+
+      afterAll(async () => {
+        // Final cleanup
+        await cleanup();
+      });
+    }
+  };
 };
 
 /**

@@ -23,6 +23,12 @@ export interface Process extends EventEmitter {
       (time?: [number, number]): [number, number];
       bigint(): bigint;
     };
+    stdout: {
+      write(str: string): boolean;
+    };
+    stderr: {
+      write(str: string): boolean;
+    };
   }
 
 declare global {

@@ -53,15 +53,7 @@ expect.extend({
 // Increase timeout for all tests
 jest.setTimeout(30000);
 
-// Mock console methods to reduce noise in tests
-global.console = {
-  ...console,
-  log: jest.fn(),
-  debug: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-};
+// Console methods are configured in main setup.ts
 
 // Define types for tracking
 type TrackedWorker = Worker & {
@@ -74,33 +66,32 @@ type TrackedWorker = Worker & {
 // Track active handles and resources
 const activeHandles = new Set();
 const activeWorkers = new Set<TrackedWorker>();
+// Initialize worker tracking
+beforeAll(async () => {
+  try {
+    const { Worker: OriginalWorker } = await import('worker_threads');
+    
+    // Create a simple tracked worker factory function
+    const createTrackedWorker = (filename: string | URL, options?: WorkerOptions): TrackedWorker => {
+      const worker = new OriginalWorker(filename, options) as TrackedWorker;
+      activeWorkers.add(worker);
+      worker.on('exit', () => {
+        activeWorkers.delete(worker);
+      });
+      return worker;
+    };
 
-// Monkey patch worker_threads to track workers
-try {
-  const { Worker: OriginalWorker } = await import('worker_threads');
-  
-  // Create a tracked worker factory function
-  const createTrackedWorker = (filename: string | URL, options?: WorkerOptions): TrackedWorker => {
-    const worker = new OriginalWorker(filename, options) as TrackedWorker;
-    activeWorkers.add(worker);
-    worker.on('exit', () => {
-      activeWorkers.delete(worker);
-    });
-    return worker;
-  };
-
-  // Create a proxy to intercept Worker constructor calls
-  const WorkerProxy = new Proxy(OriginalWorker, {
-    construct(target, args) {
-      return createTrackedWorker(args[0] as string | URL, args[1] as WorkerOptions);
-    }
-  });
-
-  // Replace the Worker constructor
-  const worker_threads = { Worker: WorkerProxy };
-} catch (error) {
-  console.warn('Failed to patch worker_threads:', error instanceof Error ? error.message : String(error));
-}
+    // Replace the Worker constructor directly
+    (global as any).Worker = function Worker(filename: string | URL, options?: WorkerOptions) {
+      return createTrackedWorker(filename, options);
+    };
+    
+    // Copy only necessary properties
+    (global as any).Worker.prototype = OriginalWorker.prototype;
+  } catch (error) {
+    console.warn('Failed to patch worker_threads:', error instanceof Error ? error.message : String(error));
+  }
+});
 
 // Clean up after each test
 afterEach(async () => {
@@ -369,6 +360,35 @@ afterEach(async () => {
     })
   );
   
+  // Stage 4: ResourceManager cleanup
+  cleanupPromises.push(
+    new Promise<void>(resolve => {
+      const cleanup = async () => {
+        // Get all active handles that might be ResourceManager instances
+        const activeHandles = process._getActiveHandles?.() || [];
+        const resourceManagers = activeHandles.filter(handle => 
+          handle?.constructor?.name === 'ResourceManager' ||
+          (handle as any)?._events?.metrics !== undefined // ResourceManager extends EventEmitter and has 'metrics' event
+        );
+
+        // Clean up ResourceManager instances
+        for (const manager of resourceManagers) {
+          try {
+            if (typeof (manager as any).destroy === 'function') {
+              await (manager as any).destroy();
+            }
+          } catch (error) {
+            logger.warn('Failed to destroy ResourceManager', {
+              error: error instanceof Error ? error : new Error(String(error))
+            });
+          }
+        }
+        resolve();
+      };
+      cleanup();
+    })
+  );
+
   // Execute cleanup stages sequentially
   for (const promise of cleanupPromises) {
     await promise;

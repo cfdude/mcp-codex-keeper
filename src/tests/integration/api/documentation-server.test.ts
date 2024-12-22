@@ -7,14 +7,12 @@ describe('Documentation Server API Integration', () => {
   let server: TestServer;
   let env: { testDir: string; cleanup: () => Promise<void> };
 
+  beforeAll(async () => {
+    // Register cleanup hooks at describe block level and initialize env
+    env = await createTestEnvironment(`docserver-${Date.now()}-${Math.random().toString(36).slice(2)}-${process.pid}`);
+  });
+
   beforeEach(async () => {
-    // Create unique test environment with instance ID and process ID
-    const instanceId = Math.random().toString(36).slice(2);
-    const processId = process.pid;
-    env = await createTestEnvironment(`docserver-${Date.now()}-${instanceId}-${processId}`);
-    process.env.TEST_INSTANCE_ID = instanceId;
-    process.env.TEST_PROCESS_ID = String(processId);
-    
     // Add timeout and error handling for server creation
     try {
       const result = await Promise.race([
@@ -22,6 +20,9 @@ describe('Documentation Server API Integration', () => {
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Server creation timeout')), 5000))
       ]);
       server = result as TestServer;
+      
+      // Register server cleanup hooks
+      server.registerServerCleanup();
     } catch (error) {
       console.error('Failed to create test server:', error);
       throw error;

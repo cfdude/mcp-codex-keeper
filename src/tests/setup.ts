@@ -23,19 +23,45 @@ jest.setTimeout(10000);
 // Сохраняем оригинальный console.error для отладки
 const originalError = console.error;
 
-// Mock console methods to reduce noise in tests
+// Configure console methods for test output
+const mockLog = jest.fn((...args: any[]) => {
+  if (process.env.CI) {
+    process.stdout.write(args.map(String).join(' ') + '\n');
+  }
+});
+
+const mockDebug = jest.fn((...args: any[]) => {
+  if (process.env.CI) {
+    process.stdout.write('[DEBUG] ' + args.map(String).join(' ') + '\n');
+  }
+});
+
+const mockInfo = jest.fn((...args: any[]) => {
+  if (process.env.CI) {
+    process.stdout.write('[INFO] ' + args.map(String).join(' ') + '\n');
+  }
+});
+
+const mockWarn = jest.fn((...args: any[]) => {
+  if (process.env.CI) {
+    process.stderr.write('[WARN] ' + args.map(String).join(' ') + '\n');
+  }
+});
+
+const mockError = jest.fn((...args: any[]) => {
+  // Always output errors to stderr
+  process.stderr.write('[ERROR] ' + args.map(String).join(' ') + '\n');
+});
+
+// Replace console methods with mocks
+const originalConsole = global.console;
 global.console = {
-  ...console,
-  log: jest.fn(),
-  debug: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: (...args: any[]) => {
-    // Выводим ошибки в консоль для отладки
-    originalError(...args);
-    // Также сохраняем мок для тестов
-    jest.fn()(...args);
-  },
+  ...originalConsole,
+  log: mockLog,
+  debug: mockDebug,
+  info: mockInfo,
+  warn: mockWarn,
+  error: mockError
 };
 
 // Create test directory helper

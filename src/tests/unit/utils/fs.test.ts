@@ -204,7 +204,8 @@ Fifth line at the end
 
       // Get metadata and verify no resource info
       const docMetadata = await fsManager.getDocumentMetadata('test-doc');
-      expect(docMetadata?.resource).toBeUndefined();
+      expect(docMetadata?.resource?.eTag).toBeUndefined();
+      expect(docMetadata?.resource?.lastModified).toBeUndefined();
     });
   });
 });

@@ -21,7 +21,18 @@ describe('ResourceManager', () => {
   });
 
   afterEach(async () => {
-    await manager.destroy();
+    if (manager) {
+      try {
+        await manager.destroy();
+        // Ensure all event listeners are removed
+        manager.removeAllListeners();
+      } catch (error) {
+        console.warn('Failed to destroy ResourceManager in test:', error);
+      } finally {
+        // Clear any remaining timers
+        jest.clearAllTimers();
+      }
+    }
   });
 
   describe('Resource Monitoring', () => {
@@ -233,18 +244,18 @@ describe('ResourceManager', () => {
     });
 
     it('should handle threshold check errors', async () => {
-      // Мокируем метод checkThresholds, чтобы он выбрасывал ошибку
-      jest.spyOn(manager as any, 'checkThresholds').mockImplementationOnce(() => {
+      // Mock checkThresholds to throw an error
+      jest.spyOn(manager as any, 'checkThresholds').mockImplementationOnce(async () => {
         throw new Error('Threshold check error');
       });
 
-      // Запускаем мониторинг
+      // Start monitoring
       manager.startMonitoring(100);
 
-      // Ждем достаточно времени для срабатывания проверки порогов
+      // Wait for the threshold check to be triggered
       await new Promise(resolve => setTimeout(resolve, 150));
 
-      // Проверяем, что мониторинг все еще работает и метрики доступны
+      // Verify monitoring continues and metrics are available
       const metrics = manager.getMetrics();
       expect(metrics).toBeDefined();
       expect(metrics.memory).toBeDefined();
@@ -252,7 +263,7 @@ describe('ResourceManager', () => {
       expect(metrics.fileDescriptors).toBeDefined();
       expect(metrics.connections).toBeDefined();
 
-      // Останавливаем мониторинг
+      // Stop monitoring
       manager.stopMonitoring();
     });
   });

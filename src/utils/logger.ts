@@ -59,8 +59,8 @@ class Logger {
 
     const formattedMessage = this.formatMessage(logMessage);
 
-    // В режиме разработки или тестирования выводим в консоль
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+    // Always output logs in CI environment or development mode
+    if (process.env.CI || process.env.NODE_ENV === 'development') {
       switch (level) {
         case 'debug':
           console.debug(formattedMessage);

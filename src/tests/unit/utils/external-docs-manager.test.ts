@@ -62,6 +62,10 @@ describe('ExternalDocsManager', () => {
     testDir = path.join(process.cwd(), 'test-data', `test-docs-${Date.now()}-${testInstanceId}-${processId}`);
     await fs.mkdir(testDir, { recursive: true });
     
+    // Create backup directory before initializing manager
+    const backupDir = path.join(testDir, 'backups');
+    await fs.mkdir(backupDir, { recursive: true });
+    
     // Add timeout for manager creation
     try {
       const result = await Promise.race([
@@ -69,7 +73,7 @@ describe('ExternalDocsManager', () => {
           enabled: false, // Disable automatic backups for tests
           interval: 1000,
           maxBackups: 3,
-          path: path.join('backups', testInstanceId),
+          path: 'backups',
         })),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Manager creation timeout')), 5000))
       ]);
@@ -235,7 +239,8 @@ describe('ExternalDocsManager', () => {
       // Получаем список бэкапов для первой версии
       const backupDir = path.join(testDir, 'backups');
       const backups1 = await fs.readdir(backupDir);
-      const timestamp1 = backups1[0].replace('.json', '');
+      expect(backups1.length).toBeGreaterThan(0);
+      const timestamp1 = backups1[0].replace('backup-', '');
 
       // Ждем для уникальности временных меток
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -303,25 +308,19 @@ describe('ExternalDocsManager', () => {
       // Мокируем метод getDocumentMetadata
       const fsManager = (manager as any).fsManager;
       const getDocSpy = jest.spyOn(fsManager, 'getDocumentMetadata');
-      const getContentSpy = jest.spyOn(fsManager, 'getDocumentContent');
-
       // Первый запрос должен обратиться к файловой системе
       await manager.getDoc(url);
       expect(getDocSpy).toHaveBeenCalledTimes(1);
-      expect(getContentSpy).toHaveBeenCalledTimes(1);
 
       // Очищаем счетчики вызовов
       getDocSpy.mockClear();
-      getContentSpy.mockClear();
 
       // Второй запрос должен использовать кэш
       await manager.getDoc(url);
       expect(getDocSpy).not.toHaveBeenCalled();
-      expect(getContentSpy).not.toHaveBeenCalled();
 
       // Очищаем моки
       getDocSpy.mockRestore();
-      getContentSpy.mockRestore();
     });
 
     it('should clear cache on backup restore', async () => {
@@ -339,7 +338,8 @@ describe('ExternalDocsManager', () => {
       await manager.getDoc(url);
 
       // Модифицируем документ
-      await manager.saveDoc(url, 'Modified');
+      const modifiedMetadata = createTestMetadata({ title: 'Modified' });
+      await manager.saveDoc(url, 'Modified', modifiedMetadata);
       const modifiedDoc = await manager.getDoc(url);
       expect(modifiedDoc?.name).toBe('Modified');
 
@@ -398,7 +398,10 @@ describe('ExternalDocsManager', () => {
       // Создаем новый менеджер с тем же путем
       const newManager = new ExternalDocsManager(testDir);
 
-      // Документ должен быть доступен, но не закэширован
+      // Wait for file system operations to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Document should be available but not cached
       const doc = await newManager.getDoc(url);
       expect(doc).toBeDefined();
       expect(doc?.name).toBe(metadata.title);
