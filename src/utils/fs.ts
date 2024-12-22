@@ -989,6 +989,29 @@ export class FileSystemManager {
         this.cleanupTimer = undefined;
       }
 
+      // Clean up cache directory
+      try {
+        const cacheFiles = await fs.readdir(this.cacheDir);
+        await Promise.all(
+          cacheFiles.map(file => 
+            fs.unlink(path.join(this.cacheDir, file))
+              .catch(error => {
+                logger.warn(`Failed to remove cache file: ${file}`, {
+                  component: 'FileSystemManager',
+                  operation: 'destroy',
+                  error: error instanceof Error ? error : new Error(String(error))
+                });
+              })
+          )
+        );
+      } catch (error) {
+        logger.warn('Failed to clean cache directory', {
+          component: 'FileSystemManager',
+          operation: 'destroy',
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+      }
+
       // Reset content fetcher
       this.contentFetcher = new ContentFetcher({
         maxRetries: 3,
@@ -1012,6 +1035,47 @@ export class FileSystemManager {
         error: error instanceof Error ? error : new Error(String(error))
       });
       throw error;
+    }
+  }
+
+  /**
+   * Remove documentation and associated files
+   * @param name Documentation name
+   */
+  async removeDocumentation(name: string): Promise<void> {
+    try {
+      const fileName = this.getDocumentationFileName(name);
+      const filePath = path.join(this.metadataDir, fileName);
+      const indexPath = path.join(this.metadataDir, `${fileName}.index.json`);
+
+      // Remove documentation file
+      try {
+        await fs.unlink(filePath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      // Remove index file
+      try {
+        await fs.unlink(indexPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      // Remove from maps
+      this.metadata.delete(name);
+      this.searchIndices.delete(name);
+
+      logger.debug(`Documentation files removed: ${name}`, {
+        component: 'FileSystemManager',
+        operation: 'removeDocumentation'
+      });
+    } catch (error) {
+      throw new FileSystemError(`Failed to remove documentation: ${name}`, error);
     }
   }
 }

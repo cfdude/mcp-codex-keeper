@@ -51,31 +51,85 @@ export class DocumentationServer extends EventEmitter {
    */
   public async cleanup(): Promise<void> {
     try {
-      // Clear the cleanup interval
+      // Wait for any pending operations to complete
+      await new Promise(resolve => setImmediate(resolve));
+
+      // Clear all intervals and timeouts
       if (this._cleanupInterval) {
         clearInterval(this._cleanupInterval);
         this._cleanupInterval = undefined;
       }
 
-      // Clean up file system manager
-      if (this.fsManager) {
-        await this.fsManager.destroy();
+      // Remove all listeners first to prevent new operations
+      this.removeAllListeners();
+      
+      // Close server if it exists
+      if (this.server) {
+        try {
+          await this.server.close();
+        } catch (error) {
+          logger.warn('Error closing server during cleanup', {
+            component: 'DocumentationServer',
+            operation: 'cleanup',
+            error: error instanceof Error ? error : new Error(String(error))
+          });
+        }
       }
 
-      // Reset content fetcher
+      // Clean up all documentation with retries
+      const docNames = [...this.docs.map(doc => doc.name)];
+      for (const name of docNames) {
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await this.removeDocumentation(name);
+            break;
+          } catch (error) {
+            retries--;
+            if (retries === 0) {
+              logger.error(`Failed to remove documentation ${name} after retries`, {
+                component: 'DocumentationServer',
+                operation: 'cleanup',
+                error: error instanceof Error ? error : new Error(String(error))
+              });
+            } else {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
+        }
+      }
+
+      // Clean up file system manager with retries
+      if (this.fsManager) {
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await this.fsManager.destroy();
+            break;
+          } catch (error) {
+            retries--;
+            if (retries === 0) {
+              logger.error('Failed to destroy file system manager after retries', {
+                component: 'DocumentationServer',
+                operation: 'cleanup',
+                error: error instanceof Error ? error : new Error(String(error))
+              });
+            } else {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
+        }
+      }
+
+      // Reset instances
       this.contentFetcher = new ContentFetcher({
         maxRetries: 3,
         retryDelay: 2000,
         timeout: 15000,
       });
-
-      // Remove all listeners from this instance
-      this.removeAllListeners();
-
-      // Reset rate limiter
       this.rateLimiter = new RateLimiter(DEFAULT_RATE_LIMIT_CONFIG);
+      this.docs = [];
 
-      // Log cleanup
       logger.debug('DocumentationServer cleanup completed', {
         component: 'DocumentationServer',
         operation: 'cleanup'
@@ -996,17 +1050,42 @@ export class DocumentationServer extends EventEmitter {
       throw new McpError(ErrorCode.InvalidRequest, `Documentation "${name}" not found`);
     }
 
-    // Remove from memory and storage
-    this.docs.splice(index, 1);
-    await this.fsManager.saveSources(this.docs);
+    try {
+      // Remove documentation files first
+      await this.fsManager.removeDocumentation(name);
+      
+      // Then remove from memory and update sources
+      this.docs.splice(index, 1);
+      await this.fsManager.saveSources(this.docs);
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Removed documentation: ${name}`,
-        },
-      ],
-    };
+      logger.debug(`Documentation removed: ${name}`, {
+        component: 'DocumentationServer',
+        operation: 'removeDocumentation'
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Removed documentation: ${name}`,
+          },
+        ],
+      };
+    } catch (error) {
+      // If error occurs, ensure consistent state
+      const docStillExists = this.docs.findIndex(doc => doc.name === name) !== -1;
+      if (!docStillExists) {
+        // Re-add to memory if file removal failed
+        const doc = this.docs[index];
+        this.docs.splice(index, 0, doc);
+      }
+
+      logger.error(`Failed to remove documentation: ${name}`, {
+        component: 'DocumentationServer',
+        operation: 'removeDocumentation',
+        error: error instanceof Error ? error : new Error(String(error))
+      });
+      throw error;
+    }
   }
 }
