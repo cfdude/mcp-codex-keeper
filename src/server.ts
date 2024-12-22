@@ -1,23 +1,12 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { EventEmitter } from 'events';
+import type { ActiveHandle } from './types/process.js';
 
-// Define types for process._getActiveHandles
-export interface ActiveHandle {
-  constructor: { name: string };
-  unref?: () => void;
-  destroy?: () => void;
-  removeAllListeners?: () => void;
-}
+// Import Process type explicitly
+import type { Process } from './types/process.js';
 
-// Extend Process type with _getActiveHandles
-declare global {
-  namespace NodeJS {
-    interface Process {
-      _getActiveHandles(): Array<ActiveHandle>;
-    }
-  }
-}
+// Import SDK types and values
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -26,6 +15,9 @@ import {
   McpError,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+
+// Type-only imports
+import type { RequestIdSchema } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { DocSource, StackDocumentation } from './types/index.js';
@@ -375,13 +367,14 @@ export class DocumentationServer extends EventEmitter {
           error: error instanceof Error ? error : new Error(String(error))
         });
       } else if (error instanceof McpError) {
+        const mcpError = error as McpError;
         logger.error('MCP protocol error', {
           component: 'DocumentationServer',
           operation: 'errorHandler',
           errorType: 'McpError',
           error: {
-            message: error.message,
-            code: error.code
+            message: mcpError.message,
+            code: mcpError.code
           }
         });
       } else {

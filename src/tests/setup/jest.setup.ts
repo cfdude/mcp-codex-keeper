@@ -295,7 +295,7 @@ afterEach(async () => {
     })
   );
   
-  // Stage 3: Final wait for any remaining operations with progressive cleanup
+  // Stage 3: Final cleanup with reasonable timeouts
   cleanupPromises.push(
     new Promise<void>(resolve => {
       const cleanup = async () => {
@@ -307,10 +307,10 @@ afterEach(async () => {
           global.gc();
         }
         
-        // Extended wait for any remaining async operations
-        await new Promise<void>(r => setTimeout(r, 5000));
+        // Brief wait for any remaining async operations
+        await new Promise<void>(r => setTimeout(r, 1000));
         
-        // Check for any remaining worker threads that are safe to cleanup
+        // Check for any remaining worker threads
         const remainingWorkers = (process._getActiveHandles?.()
           ?.filter(handle => {
             // Only cleanup workers that are marked as completed or errored
