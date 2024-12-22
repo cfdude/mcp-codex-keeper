@@ -2,7 +2,6 @@
 const config = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  setupFilesAfterEnv: ['<rootDir>/src/tests/setup/jest.setup.ts'],
   roots: ['<rootDir>/src'],
   testMatch: ['**/tests/**/*.test.ts'],
   collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/**/__tests__/**'],
@@ -14,7 +13,7 @@ const config = {
       statements: 80,
     },
   },
-  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts', 'jest-extended/all'],
+  setupFilesAfterEnv: ['jest-extended/all', '<rootDir>/src/tests/setup.ts', '<rootDir>/src/tests/setup/jest.setup.ts'],
   watchPlugins: ['jest-watch-typeahead/filename', 'jest-watch-typeahead/testname'],
   reporters: [
     ['<rootDir>/src/tests/custom-reporter.js', {}],

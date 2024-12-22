@@ -139,27 +139,36 @@ export class TestServer {
           
           // Stage 1: Remove all listeners and cleanup server
           cleanupPromises.push(
-            new Promise<void>(async (resolve) => {
-              try {
-                // Remove all listeners for each event
-                server.eventNames().forEach(event => {
-                  server.removeAllListeners(event);
-                });
-                
-                // Cleanup server resources
-                if (typeof server.cleanup === 'function') {
-                  await server.cleanup();
+            new Promise<void>(resolve => {
+              void (async () => {
+                try {
+                  // Remove all listeners for each event
+                  server.eventNames().forEach(event => {
+                    server.removeAllListeners(event);
+                  });
+                  
+                  // Cleanup server resources
+                  if (typeof server.cleanup === 'function') {
+                    await server.cleanup();
+                  }
+                  
+                  resolve();
+                } catch (error) {
+                  logger.error('Error during listener cleanup:', {
+                    component: 'TestServer',
+                    operation: 'cleanup',
+                    error: error instanceof Error ? error : new Error(String(error))
+                  });
+                  resolve();
                 }
-                
-                resolve();
-              } catch (error) {
-                logger.error('Error during listener cleanup:', {
+              })().catch(error => {
+                logger.error('Error in cleanup IIFE:', {
                   component: 'TestServer',
                   operation: 'cleanup',
                   error: error instanceof Error ? error : new Error(String(error))
                 });
                 resolve();
-              }
+              });
             })
           );
           
@@ -492,9 +501,15 @@ export class TestServer {
       }
     });
 
-    // Set up MCP protocol handlers
+    // Set up MCP protocol handlers with proper schema
     const listToolsHandler: ServerHandler = async () => ({
-      content: [{ type: 'text', text: JSON.stringify([]) }], // Empty array as we don't have tools in test environment
+      content: [{ 
+        type: 'text', 
+        text: JSON.stringify([]) // Empty array as we don't have tools in test environment
+      }],
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
 
     const listResourcesHandler: ServerHandler = async () => ({
@@ -502,6 +517,9 @@ export class TestServer {
         type: 'text', 
         text: JSON.stringify(await this.listResources())
       }],
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
 
     const mockServer: MockServer = {
@@ -514,6 +532,23 @@ export class TestServer {
       connect: jest.fn(async () => undefined),
       close: jest.fn(async () => undefined),
     };
+
+    // Register handlers with proper MCP protocol schema
+    mockServer.setRequestHandler({
+      shape: {
+        method: {
+          value: 'list_tools'
+        }
+      }
+    }, listToolsHandler);
+
+    mockServer.setRequestHandler({
+      shape: {
+        method: {
+          value: 'list_resources'
+        }
+      }
+    }, listResourcesHandler);
 
     this.mockServer = mockServer;
     this.setMockServer(mockServer as unknown as Server);

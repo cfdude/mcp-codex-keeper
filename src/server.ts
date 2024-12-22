@@ -3,16 +3,17 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { EventEmitter } from 'events';
 
 // Define types for process._getActiveHandles
+export interface ActiveHandle {
+  constructor: { name: string };
+  unref?: () => void;
+  destroy?: () => void;
+  removeAllListeners?: () => void;
+}
+
+// Extend Process type with _getActiveHandles
 declare global {
-  namespace NodeJS {
-    interface Process {
-      _getActiveHandles(): Array<{
-        constructor: { name: string };
-        unref?: () => void;
-        destroy?: () => void;
-        removeAllListeners?: () => void;
-      }>;
-    }
+  interface Process {
+    _getActiveHandles(): Array<ActiveHandle>;
   }
 }
 import {
