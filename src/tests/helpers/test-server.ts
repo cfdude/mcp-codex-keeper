@@ -6,13 +6,31 @@ import { DocSource, ValidCategory } from '../../types/index.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { logger } from '../../utils/logger.js';
-// Define worker handle type
+// Define comprehensive worker handle type
 interface WorkerHandle {
   constructor: { name: string };
   terminate?: () => Promise<void>;
   destroy?: () => void;
   unref?: () => void;
   removeAllListeners?: () => void;
+  threadId?: number;
+  getState?: () => string;
+  isRunning?: boolean;
+  exitCode?: number | null;
+  stderr?: { 
+    _writableState?: { 
+      finished?: boolean 
+    } 
+  };
+  stdout?: { 
+    _writableState?: { 
+      finished?: boolean 
+    } 
+  };
+  process?: { 
+    killed?: boolean;
+    kill?: (signal: string) => void;
+  };
 }
 
 // Remove unused import
@@ -350,28 +368,81 @@ export class TestServer {
               // Wait for immediate operations
               await new Promise<void>(r => setTimeout(r, 1000));
               
-              // Final check for worker threads that are safe to cleanup
+              // Enhanced worker thread detection and cleanup
               const remainingWorkers = (process._getActiveHandles?.()
                 ?.filter(handle => {
-                  // Only cleanup workers that are marked as completed or errored
                   if (handle?.constructor?.name === 'Worker') {
-                    const worker = handle as WorkerHandle & { threadId?: number; getState?: () => string; isRunning?: boolean };
-                    // Check if worker is in a state safe for cleanup
+                    const worker = handle as WorkerHandle & {
+                      threadId?: number;
+                      getState?: () => string;
+                      isRunning?: boolean;
+                      exitCode?: number | null;
+                      stderr?: { _writableState?: { finished?: boolean } };
+                      stdout?: { _writableState?: { finished?: boolean } };
+                      process?: { killed?: boolean };
+                    };
+
+                    // Comprehensive worker state check
                     const workerState = worker.getState?.();
-                    return workerState === 'stopped' || workerState === 'errored' || worker.isRunning === false;
+                    const isExited = worker.exitCode !== undefined && worker.exitCode !== null;
+                    const isStopped = workerState === 'stopped' || workerState === 'errored';
+                    const isNotRunning = worker.isRunning === false;
+                    const isKilled = worker.process?.killed === true;
+                    const streamsFinished = 
+                      worker.stderr?._writableState?.finished === true && 
+                      worker.stdout?._writableState?.finished === true;
+
+                    // Return true for any worker that shows signs of completion or needs cleanup
+                    return isExited || isStopped || isNotRunning || isKilled || streamsFinished;
                   }
                   return false;
                 }) || []) as WorkerHandle[];
                 
               for (const worker of remainingWorkers) {
                 try {
-                  // Give workers a chance to cleanup gracefully
-                  await new Promise<void>(resolve => setTimeout(resolve, 100));
-                  
-                  if (worker.terminate) {
-                    await worker.terminate();
-                  } else if (worker.destroy) {
-                    worker.destroy();
+                  // Enhanced worker cleanup with staged termination
+                  try {
+                    // Stage 1: Give workers a chance to cleanup gracefully
+                    await Promise.race([
+                      new Promise<void>(resolve => setTimeout(resolve, 2000)),
+                      new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Cleanup timeout')), 5000))
+                    ]);
+
+                    // Stage 2: Attempt graceful termination
+                    if (worker.terminate) {
+                      await Promise.race([
+                        worker.terminate(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Terminate timeout')), 3000))
+                      ]);
+                    } else if (worker.destroy) {
+                      worker.destroy();
+                    }
+
+                    // Stage 3: Force cleanup if still running
+                    const workerRef = worker as any;
+                    if (workerRef.process && !workerRef.process.killed) {
+                      workerRef.process.kill('SIGKILL');
+                    }
+                  } catch (terminateError) {
+                    // Log termination error but continue cleanup
+                    const workerRef = worker as WorkerHandle;
+                    logger.warn('Worker termination error', {
+                      error: terminateError instanceof Error ? terminateError : new Error(String(terminateError)),
+                      workerId: workerRef.threadId,
+                      stage: 'force_cleanup'
+                    });
+                    
+                    // Ensure cleanup even if termination failed
+                    try {
+                      if (workerRef.process?.kill) {
+                        workerRef.process.kill('SIGKILL');
+                      }
+                    } catch (killError) {
+                      logger.error('Failed to force kill worker', {
+                        error: killError instanceof Error ? killError : new Error(String(killError)),
+                        workerId: workerRef.threadId
+                      });
+                    }
                   }
                 } catch (error) {
                   logger.warn('Failed to terminate worker in final check', {
@@ -381,8 +452,17 @@ export class TestServer {
                 }
               }
               
-              // Final wait to ensure cleanup
-              await new Promise<void>(r => setTimeout(r, 1000));
+              // Extended final wait with verification
+              await new Promise<void>(r => setTimeout(r, 5000));
+              
+              // Verify all workers are cleaned up
+              const finalWorkerCheck = process._getActiveHandles?.()?.filter(h => h?.constructor?.name === 'Worker') || [];
+              if (finalWorkerCheck.length > 0) {
+                logger.warn('Some workers still remain after cleanup', {
+                  remainingCount: finalWorkerCheck.length,
+                  workerIds: finalWorkerCheck.map((w: any) => w.threadId).filter(Boolean)
+                });
+              }
               resolve();
             };
             finalCheck().catch(error => {
