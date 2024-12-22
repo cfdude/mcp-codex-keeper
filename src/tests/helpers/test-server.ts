@@ -231,11 +231,11 @@ export class TestServer {
             resolve();
           };
           
-          // Set a timeout for cleanup
+          // Set a timeout for cleanup with extended duration
           const timeoutId = setTimeout(() => {
             logger.warn('Server cleanup timeout reached');
             cleanup();
-          }, 5000);
+          }, 10000); // Increased timeout to allow for slower cleanup
 
           // Attempt cleanup
           try {
@@ -304,18 +304,40 @@ export class TestServer {
         await Promise.all(resourceCleanupPromises);
         serverResources.clear();
 
-        // Stage 3: Clean up any remaining handles
-        const handles = process._getActiveHandles?.() || [];
-        for (const handle of handles) {
-          if (handle?.unref) handle.unref();
-          if (handle?.destroy) handle.destroy();
-        }
-
-        // Stage 4: Force garbage collection and final wait
-        if (typeof global.gc === 'function') {
-          global.gc();
-        }
-        await new Promise(resolve => setImmediate(resolve));
+        // Stage 3: Progressive cleanup of remaining handles
+        const finalCleanup = async () => {
+          // First unref all handles
+          const handles = process._getActiveHandles?.() || [];
+          for (const handle of handles) {
+            if (handle?.unref) handle.unref();
+          }
+          
+          // Wait for any immediate operations
+          await new Promise(resolve => setImmediate(resolve));
+          
+          // Then destroy handles
+          for (const handle of handles) {
+            if (handle?.destroy) {
+              try {
+                handle.destroy();
+              } catch (error) {
+                logger.warn('Failed to destroy handle', {
+                  error: error instanceof Error ? error : new Error(String(error))
+                });
+              }
+            }
+          }
+          
+          // Force garbage collection
+          if (typeof global.gc === 'function') {
+            global.gc();
+          }
+          
+          // Final wait for any cleanup operations
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        };
+        
+        await finalCleanup();
       } catch (error) {
         const logError = error instanceof Error ? error : new Error(String(error));
         logger.error('Failed to cleanup server resources:', {

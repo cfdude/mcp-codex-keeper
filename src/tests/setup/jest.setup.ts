@@ -241,12 +241,30 @@ afterEach(async () => {
     })
   );
   
-  // Stage 3: Final wait for any remaining operations
+  // Stage 3: Final wait for any remaining operations with progressive cleanup
   cleanupPromises.push(
-    new Promise(resolve => setTimeout(resolve, 2000))
+    new Promise(resolve => {
+      const cleanup = async () => {
+        // First wait for immediate operations
+        await new Promise(r => setImmediate(r));
+        
+        // Then force garbage collection
+        if (typeof global.gc === 'function') {
+          global.gc();
+        }
+        
+        // Finally wait for any remaining async operations
+        await new Promise(r => setTimeout(r, 1000));
+        resolve();
+      };
+      cleanup();
+    })
   );
   
-  await Promise.all(cleanupPromises);
+  // Execute cleanup stages sequentially
+  for (const promise of cleanupPromises) {
+    await promise;
+  }
   
   // Additional cleanup for any stray test directories
   try {
