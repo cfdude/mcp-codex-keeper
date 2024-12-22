@@ -277,19 +277,87 @@ export class DocumentationServer extends EventEmitter {
    * Sets up error handlers for the server
    */
   private setupErrorHandlers(): void {
+    // Set up server error handler with proper logging
     this.server.onerror = (error: unknown) => {
       if (error instanceof FileSystemError) {
-        console.error('[Storage Error]', error.message, error.cause);
+        logger.error('Storage error occurred', {
+          component: 'DocumentationServer',
+          operation: 'errorHandler',
+          errorType: 'FileSystemError',
+          error: error instanceof Error ? error : new Error(String(error))
+        });
       } else if (error instanceof McpError) {
-        console.error('[MCP Error]', error.message);
+        logger.error('MCP protocol error', {
+          component: 'DocumentationServer',
+          operation: 'errorHandler',
+          errorType: 'McpError',
+          error: {
+            message: error.message,
+            code: error.code
+          }
+        });
       } else {
-        console.error('[Unexpected Error]', error);
+        logger.error('Unexpected error', {
+          component: 'DocumentationServer',
+          operation: 'errorHandler',
+          error: error instanceof Error ? error : new Error(String(error))
+        });
       }
     };
 
-    process.on('SIGINT', async () => {
-      await this.server.close();
-      process.exit(0);
+    // Handle process termination signals
+    const cleanup = async (signal: string) => {
+      try {
+        logger.info(`Received ${signal}, cleaning up...`, {
+          component: 'DocumentationServer',
+          operation: 'shutdown'
+        });
+        
+        // Remove all listeners to prevent new operations
+        this.removeAllListeners();
+        
+        // Perform cleanup
+        await this.cleanup();
+        
+        // Close server after cleanup
+        await this.server.close();
+        
+        logger.info('Cleanup completed, exiting...', {
+          component: 'DocumentationServer',
+          operation: 'shutdown'
+        });
+        
+        // Exit after cleanup
+        process.exit(0);
+      } catch (error) {
+        logger.error(`Error during ${signal} cleanup`, {
+          component: 'DocumentationServer',
+          operation: 'shutdown',
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+        process.exit(1);
+      }
+    };
+
+    // Register signal handlers
+    process.once('SIGINT', () => cleanup('SIGINT'));
+    process.once('SIGTERM', () => cleanup('SIGTERM'));
+    
+    // Handle uncaught errors
+    process.on('uncaughtException', (error: Error) => {
+      logger.error('Uncaught exception', {
+        component: 'DocumentationServer',
+        operation: 'uncaughtException',
+        error
+      });
+    });
+
+    process.on('unhandledRejection', (reason: unknown) => {
+      logger.error('Unhandled rejection', {
+        component: 'DocumentationServer',
+        operation: 'unhandledRejection',
+        error: reason instanceof Error ? reason : new Error(String(reason))
+      });
     });
   }
 
@@ -968,131 +1036,253 @@ export class DocumentationServer extends EventEmitter {
   /**
    * Starts the server
    */
-  async run(): Promise<void> {
-    console.error('\nStarting server...');
-
-    // Initialize if not already initialized
-    if (!this.fsManager) {
-      await this.init();
-    }
-
-    // Load documentation sources
+  private async run(): Promise<void> {
     try {
-      console.error('\nLoading documentation sources...');
-      const savedDocs = await this.fsManager.loadSources();
-      console.error('Loaded docs:', savedDocs.length);
+      logger.info('Starting server...', {
+        component: 'DocumentationServer',
+        operation: 'run'
+      });
+      // Initialize if not already initialized
+      if (!this.fsManager) {
+        await this.init();
+      }
 
-      if (savedDocs.length > 0) {
-        console.error('\nUsing existing docs');
-        console.error('Categories:', [...new Set(savedDocs.map(d => d.category))]);
-        console.error('Docs:', JSON.stringify(savedDocs, null, 2).slice(0, 200) + '...');
-        this.docs = savedDocs;
-      } else {
-        // Load default documentation if no existing docs
-        console.error('\nNo existing docs found, loading default documentation...');
-        const defaultDocsPath = path.join(process.cwd(), 'build', 'config', 'default-docs.json');
-        const defaultDocsContent = await fs.readFile(defaultDocsPath, 'utf-8');
-        const defaultDocs = JSON.parse(defaultDocsContent).docs;
+      // Load documentation sources with retries
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          logger.info('Loading documentation sources...', {
+            component: 'DocumentationServer',
+            operation: 'run'
+          });
+          
+          const savedDocs = await this.fsManager.loadSources();
+          logger.info(`Loaded ${savedDocs.length} docs`, {
+            component: 'DocumentationServer',
+            operation: 'run'
+          });
 
-        // Add default docs one by one to ensure content is fetched and cached
-        let successCount = 0;
-        const totalDocs = defaultDocs.length;
+          if (savedDocs.length > 0) {
+            logger.info('Using existing docs', {
+              component: 'DocumentationServer',
+              operation: 'run',
+              categories: [...new Set(savedDocs.map(d => d.category))]
+            });
+            this.docs = savedDocs;
+            break;
+          } else {
+            // Load default documentation if no existing docs
+            logger.info('No existing docs found, loading default documentation...', {
+              component: 'DocumentationServer',
+              operation: 'run'
+            });
+            
+            const defaultDocsPath = path.join(process.cwd(), 'build', 'config', 'default-docs.json');
+            const defaultDocsContent = await fs.readFile(defaultDocsPath, 'utf-8');
+            const defaultDocs = JSON.parse(defaultDocsContent).docs;
 
-        for (const doc of defaultDocs) {
-          try {
-            await this.addDocumentation(doc);
-            console.error(`Added default documentation: ${doc.name}`);
-            successCount++;
-          } catch (error) {
-            console.error(`Failed to add default documentation ${doc.name}:`, error);
-            // Try alternative URL if available
-            if (doc.alternativeUrl) {
+            // Add default docs one by one to ensure content is fetched and cached
+            let successCount = 0;
+            const totalDocs = defaultDocs.length;
+
+            for (const doc of defaultDocs) {
               try {
-                const altDoc = { ...doc, url: doc.alternativeUrl };
-                await this.addDocumentation(altDoc);
-                console.error(`Added default documentation from alternative URL: ${doc.name}`);
+                await this.addDocumentation(doc);
+                logger.info(`Added default documentation: ${doc.name}`, {
+                  component: 'DocumentationServer',
+                  operation: 'run'
+                });
                 successCount++;
-              } catch (altError) {
-                console.error(
-                  `Failed to add documentation from alternative URL ${doc.name}:`,
-                  altError
-                );
+              } catch (error) {
+                logger.warn(`Failed to add default documentation ${doc.name}`, {
+                  component: 'DocumentationServer',
+                  operation: 'run',
+                  error: error instanceof Error ? error : new Error(String(error))
+                });
+                
+                // Try alternative URL if available
+                if (doc.alternativeUrl) {
+                  try {
+                    const altDoc = { ...doc, url: doc.alternativeUrl };
+                    await this.addDocumentation(altDoc);
+                    logger.info(`Added default documentation from alternative URL: ${doc.name}`, {
+                      component: 'DocumentationServer',
+                      operation: 'run'
+                    });
+                    successCount++;
+                  } catch (altError) {
+                    logger.error(`Failed to add documentation from alternative URL ${doc.name}`, {
+                      component: 'DocumentationServer',
+                      operation: 'run',
+                      error: altError instanceof Error ? altError : new Error(String(altError))
+                    });
+                  }
+                }
               }
             }
+
+            if (successCount === 0) {
+              throw new Error('Failed to load any default documentation');
+            }
+
+            logger.info(`Successfully loaded ${successCount}/${totalDocs} default documentation sources`, {
+              component: 'DocumentationServer',
+              operation: 'run'
+            });
+            break;
           }
-        }
-
-        console.error(
-          `Successfully loaded ${successCount}/${totalDocs} default documentation sources`
-        );
-
-        // If no docs were loaded successfully, throw error
-        if (successCount === 0) {
-          throw new Error('Failed to load any default documentation');
+        } catch (error) {
+          retries--;
+          if (retries === 0) {
+            logger.error('Failed to load documentation sources after retries', {
+              component: 'DocumentationServer',
+              operation: 'run',
+              error: error instanceof Error ? error : new Error(String(error))
+            });
+            this.docs = [];
+            throw error;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
+
+      // Log initial state before starting server
+      logger.info('Initial Documentation State:', {
+        component: 'DocumentationServer',
+        operation: 'run',
+        state: this.getInitialState()
+      });
+
+      // Start server with retry logic
+      const transport = new StdioServerTransport();
+      
+      // Connect with retries
+      retries = 3;
+      while (retries > 0) {
+        try {
+          await this.server.connect(transport);
+          logger.info('Documentation MCP server running on stdio', {
+            component: 'DocumentationServer',
+            operation: 'run'
+          });
+          break;
+        } catch (error) {
+          retries--;
+          if (retries === 0) {
+            logger.error('Failed to connect server after retries', {
+              component: 'DocumentationServer',
+              operation: 'run',
+              error: error instanceof Error ? error : new Error(String(error))
+            });
+            throw error;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      // Set up cleanup handler
+      process.once('beforeExit', async () => {
+        try {
+          await this.cleanup();
+        } catch (error) {
+          logger.error('Error during cleanup', {
+            component: 'DocumentationServer',
+            operation: 'beforeExit',
+            error: error instanceof Error ? error : new Error(String(error))
+          });
+        }
+      });
     } catch (error) {
-      console.error('\nError loading documentation sources:', error);
-      console.error('Error details:', error instanceof Error ? error.message : String(error));
-      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
-      this.docs = [];
+      logger.error('Fatal error during server startup', {
+        component: 'DocumentationServer',
+        operation: 'run',
+        error: error instanceof Error ? error : new Error(String(error))
+      });
+      throw error;
     }
-
-    // Log initial state before starting server
-    console.error('\nInitial Documentation State:');
-    console.error(this.getInitialState());
-
-    // Start server
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error('Documentation MCP server running on stdio');
   }
 
   /**
    * Removes documentation source
    */
   private async removeDocumentation(name: string): Promise<MpcResponse> {
-    const index = this.docs.findIndex(doc => doc.name === name);
-    if (index === -1) {
+    const doc = this.docs.find(d => d.name === name);
+    if (!doc) {
       throw new McpError(ErrorCode.InvalidRequest, `Documentation "${name}" not found`);
     }
 
-    try {
-      // Remove documentation files first
-      await this.fsManager.removeDocumentation(name);
-      
-      // Then remove from memory and update sources
-      this.docs.splice(index, 1);
-      await this.fsManager.saveSources(this.docs);
+    let retries = 3;
+    let lastError: Error | null = null;
 
-      logger.debug(`Documentation removed: ${name}`, {
-        component: 'DocumentationServer',
-        operation: 'removeDocumentation'
-      });
+    while (retries > 0) {
+      try {
+        // Store index before removal
+        const index = this.docs.findIndex(d => d.name === name);
+        const docCopy = { ...this.docs[index] };
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Removed documentation: ${name}`,
-          },
-        ],
-      };
-    } catch (error) {
-      // If error occurs, ensure consistent state
-      const docStillExists = this.docs.findIndex(doc => doc.name === name) !== -1;
-      if (!docStillExists) {
-        // Re-add to memory if file removal failed
-        const doc = this.docs[index];
-        this.docs.splice(index, 0, doc);
+        // Remove documentation files first
+        await this.fsManager.removeDocumentation(name);
+        
+        // Then remove from memory
+        this.docs.splice(index, 1);
+        
+        // Update sources file
+        try {
+          await this.fsManager.saveSources(this.docs);
+        } catch (saveError) {
+          // If saving sources fails, rollback memory state
+          this.docs.splice(index, 0, docCopy);
+          throw saveError;
+        }
+
+        logger.info(`Successfully removed documentation: ${name}`, {
+          component: 'DocumentationServer',
+          operation: 'removeDocumentation'
+        });
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Removed documentation: ${name}`,
+            },
+          ],
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        retries--;
+
+        if (retries > 0) {
+          logger.warn(`Retrying documentation removal: ${name} (${retries} attempts left)`, {
+            component: 'DocumentationServer',
+            operation: 'removeDocumentation',
+            error: lastError
+          });
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
+
+        logger.error(`Failed to remove documentation after retries: ${name}`, {
+          component: 'DocumentationServer',
+          operation: 'removeDocumentation',
+          error: lastError
+        });
+
+        if (error instanceof McpError) {
+          throw error;
+        }
+        
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to remove documentation: ${lastError.message}`
+        );
       }
-
-      logger.error(`Failed to remove documentation: ${name}`, {
-        component: 'DocumentationServer',
-        operation: 'removeDocumentation',
-        error: error instanceof Error ? error : new Error(String(error))
-      });
-      throw error;
     }
+
+    // This should never be reached
+    throw new McpError(
+      ErrorCode.InternalError,
+      lastError ? lastError.message : `Unexpected error removing documentation: ${name}`
+    );
   }
 }
