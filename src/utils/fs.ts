@@ -47,22 +47,37 @@ export class FileSystemManager {
     }
   ) {
     // Ensure absolute path and decode URL-encoded characters
-    this.docsPath = decodeURIComponent(path.resolve(basePath));
-    this.sourcesFile = path.join(this.docsPath, 'sources.json');
-    this.cacheDir = path.join(this.docsPath, 'cache');
-
-    // Log paths for debugging
-    console.error('\nFileSystemManager paths:');
-    console.error('- Base path:', this.docsPath);
-    console.error('- Sources file:', this.sourcesFile);
-    console.error('- Cache directory:', this.cacheDir);
-    console.error('- Current working directory:', process.cwd());
-
-    // Use provided cache configuration
-    this.cacheConfig = cacheConfig;
-
-    // Start cache cleanup timer
-    this.startCleanupTimer();
+    try {
+      console.error('Initializing FileSystemManager...');
+      
+      this.docsPath = decodeURIComponent(path.resolve(basePath));
+      this.sourcesFile = path.join(this.docsPath, 'sources.json');
+      this.cacheDir = path.join(this.docsPath, 'cache');
+  
+      console.error('Resolved paths for FileSystemManager:');
+      console.error('- Base path:', this.docsPath);
+      console.error('- Sources file:', this.sourcesFile);
+      console.error('- Cache directory:', this.cacheDir);
+  
+      // Validate and create directories if they don't exist
+      fs.mkdir(this.docsPath, { recursive: true }).catch(error => {
+        console.error('Failed to create docs path:', error);
+        throw new FileSystemError('Failed to create docs path', error);
+      });
+  
+      fs.mkdir(this.cacheDir, { recursive: true }).catch(error => {
+        console.error('Failed to create cache directory:', error);
+        throw new FileSystemError('Failed to create cache directory', error);
+      });
+  
+      // Use cache configuration and start cleanup timer
+      this.cacheConfig = cacheConfig;
+      this.startCleanupTimer();
+      console.error('FileSystemManager initialized successfully.');
+    } catch (error) {
+      console.error('Error initializing FileSystemManager:', error);
+      throw new FileSystemError('Failed to initialize FileSystemManager', error);
+    }
   }
 
   /**
@@ -120,41 +135,22 @@ export class FileSystemManager {
    */
   async ensureDirectories(): Promise<void> {
     try {
-      console.error('\nEnsuring directories:');
-      console.error('- Creating docs path:', this.docsPath);
+      console.error('Ensuring directories...');
+      console.error('- Docs Path:', this.docsPath);
+      console.error('- Cache Dir:', this.cacheDir);
+  
       await fs.mkdir(this.docsPath, { recursive: true });
-
-      const docsStats = await fs.stat(this.docsPath);
-      console.error('- Docs path created:', docsStats.isDirectory());
-      console.error('- Docs path permissions:', docsStats.mode.toString(8));
-
-      console.error('- Creating cache dir:', this.cacheDir);
+      console.error('Docs path ensured.');
+  
       await fs.mkdir(this.cacheDir, { recursive: true });
-
-      const cacheStats = await fs.stat(this.cacheDir);
-      console.error('- Cache dir created:', cacheStats.isDirectory());
-      console.error('- Cache dir permissions:', cacheStats.mode.toString(8));
-
-      // Try to write a test file
-      const testFile = path.join(this.docsPath, 'test.txt');
-      console.error('- Testing write permissions:', testFile);
-      try {
-        await fs.writeFile(testFile, 'test');
-        await fs.unlink(testFile);
-        console.error('- Write test successful');
-      } catch (error) {
-        // Ignore errors when deleting test file
-        console.error('- Write test completed with cleanup warning:', error);
-      }
+      console.error('Cache dir ensured.');
     } catch (error) {
       console.error('Failed to ensure directories:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', error.message);
-        console.error('Stack trace:', error.stack);
-      }
       throw new FileSystemError('Failed to create required directories', error);
     }
   }
+  
+
 
   /**
    * Saves documentation content to cache using streams
@@ -163,18 +159,22 @@ export class FileSystemManager {
    * @throws {FileSystemError} If save operation fails
    */
   async saveDocumentation(name: string, content: string): Promise<void> {
+    const filename = this.getDocumentationFileName(name);
+    const filepath = path.join(this.cacheDir, filename);
+
+    console.error(`Saving documentation to cache: ${filepath}`);
     try {
-      const filename = this.getDocumentationFileName(name);
-      await this.ensureDirectories();
 
-      // Create a readable stream from the content
-      const readStream = Readable.from(content);
+    // Create a readable stream from the content
+    const readableStream = Readable.from([content]);
 
-      // Create a write stream to the file
-      const writeStream = createWriteStream(path.join(this.cacheDir, filename), { flags: 'w' });
+    // Create a write stream to save the content
+    const writeStream = createWriteStream(filepath, { flags: 'w' });
 
-      // Use pipeline for proper error handling and cleanup
-      await pipeline(readStream, writeStream);
+    // Use pipeline for proper error handling during stream operations
+    await pipeline(readableStream, writeStream);
+
+    console.error(`File saved successfully: ${filepath}`);
     } catch (error) {
       throw new FileSystemError(`Failed to save documentation: ${name}`, error);
     }

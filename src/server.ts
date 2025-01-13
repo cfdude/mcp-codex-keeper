@@ -1,15 +1,18 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+// Import the proper types from SDK
+import { Server, ServerOptions } from '@modelcontextprotocol/sdk/server/index.js';
+import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
+  Implementation,
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
-  McpError,
+  McpError
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
-import fs from 'fs/promises';
+//import fs from 'fs/promises';
 import path from 'path';
 import { DocCategory, DocSource } from './types/index.js';
 import { FileSystemError, FileSystemManager } from './utils/fs.js';
@@ -19,22 +22,12 @@ import {
   validateSearchDocArgs,
   validateUpdateDocArgs,
 } from './validators/index.js';
+import { promises as fs } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-// Environment settings from MCP configuration
-const ENV = {
-  isLocal: process.env.MCP_ENV === 'local' && process.env.NODE_ENV !== 'production',
-  cacheMaxSize: 104857600, // 100MB
-  cacheMaxAge: 604800000, // 7 days
-  cacheCleanupInterval: 3600000, // 1 hour
-  storagePath: 'data', // Default storage path for local development
-};
-
-// Storage paths
-const STORAGE_PATHS = {
-  local: (modulePath: string) => path.join(modulePath, '..', ENV.storagePath),
-  production: () =>
-    path.join(process.env.HOME || process.env.USERPROFILE || '', '.mcp-codex-keeper'),
-};
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Default documentation sources with best practices and essential references
 const defaultDocs: DocSource[] = [
@@ -99,93 +92,141 @@ const defaultDocs: DocSource[] = [
   },
 ];
 
+// Server capabilities configuration
+const SERVER_CAPABILITIES: ServerCapabilities = {
+  tools: {
+    list_documentation: true,
+    add_documentation: true,
+    update_documentation: true,
+    search_documentation: true,
+    remove_documentation: true,
+  },
+  resources: {
+    'docs://sources': {
+      read: true,
+      write: false,
+    },
+  },
+  logging: {
+    level: 'debug',
+  },
+};
+
+// Server options configuration
+const SERVER_OPTIONS: ServerOptions = {
+  capabilities: SERVER_CAPABILITIES,
+};
+
+// Server configuration
+const SERVER_CONFIG = {
+  name: 'mcp-codex-keeper',
+  version: '1.1.10',
+  description: 'Documentation keeper MCP server',
+  capabilities: SERVER_CAPABILITIES
+};
+
+// Environment settings from MCP configuration
+const ENV = {
+  cacheMaxSize: 104857600, // 100MB
+  cacheMaxAge: 604800000, // 7 days
+  cacheCleanupInterval: 3600000, // 1 hour
+  storagePath: 'data', // Default storage path for local development
+};
+
 /**
  * Main server class for the documentation keeper
  */
 export class DocumentationServer {
-  private server!: Server;
+  private readonly server: Server;
   private fsManager!: FileSystemManager;
   private docs: DocSource[] = [];
-  private isLocal: boolean = ENV.isLocal;
+  private readonly isLocal: boolean;
+  private readonly storagePath: string;
 
   constructor() {
-    this.init()
-      .then(() => this.run())
-      .catch(console.error);
-  }
-
-  private async init() {
-    // Use environment settings
-    this.isLocal = ENV.isLocal;
-    const serverName = this.isLocal ? 'local-mcp-codex-keeper' : 'aindreyway-mcp-codex-keeper';
-
-    // Get storage path based on mode
-    const moduleURL = new URL(import.meta.url);
-    const modulePath = path.dirname(moduleURL.pathname);
-    const storagePath = this.isLocal ? STORAGE_PATHS.local(modulePath) : STORAGE_PATHS.production();
-
-    // Create storage directory in production mode
-    if (!this.isLocal) {
-      try {
-        await fs.mkdir(storagePath, { recursive: true });
-        console.error('Created storage directory:', storagePath);
-      } catch (error) {
-        console.error('Failed to create storage directory:', error);
-      }
-    }
-
-    this.fsManager = new FileSystemManager(storagePath, {
-      maxSize: ENV.cacheMaxSize,
-      maxAge: ENV.cacheMaxAge,
-      cleanupInterval: ENV.cacheCleanupInterval,
-    });
-
-    this.server = new Server(
-      {
-        name: serverName,
-        version: '1.1.10',
-      },
-      {
-        capabilities: {
-          tools: {},
-          resources: {},
-        },
-      }
-    );
-
+    // Set environment variables first
+    this.isLocal = process.env.MCP_ENV === 'local';
+    
+    // Resolve storage path
     if (this.isLocal) {
-      console.error('\n' + '='.repeat(50));
-      console.error('🔧 RUNNING IN LOCAL DEVELOPMENT MODE');
-      console.error('Server name: local-codex-keeper');
-      console.error('Data directory: ' + path.join(modulePath, '..', ENV.storagePath));
-      console.error('To run production version use: npx @aindreyway/mcp-codex-keeper');
-      console.error('='.repeat(50) + '\n');
+      const resolvedPath = join(__dirname, '..', ENV.storagePath);
+      console.error('Resolved local path:', resolvedPath);
+      this.storagePath = resolvedPath;
+    } else {
+      const resolvedPath = process.env.MCP_STORAGE_PATH || join(process.env.HOME || '', 'mcp-storage');
+      console.error('Resolved production path:', resolvedPath);
+      this.storagePath = resolvedPath;
     }
+    
+    // Create server implementation
+    const implementation: Implementation = {
+      name: SERVER_CONFIG.name,
+      version: SERVER_CONFIG.version,
+      description: SERVER_CONFIG.description,
+    };
 
-    // Initialize with empty array, will be populated in run()
-    this.docs = [];
-
-    this.setupToolHandlers();
-    this.setupResourceHandlers();
-    this.setupErrorHandlers();
-
-    // Log initial documentation state with version indicator
-    console.error(
-      `Available Documentation Categories ${
-        this.isLocal ? '[LOCAL VERSION]' : '[PRODUCTION VERSION]'
-      }:`
-    );
-    const categories = [...new Set(this.docs.map(doc => doc.category))];
-    categories.forEach(category => {
-      const docsInCategory = this.docs.filter(doc => doc.category === category);
-      console.error(`\n${category}:`);
-      docsInCategory.forEach(doc => {
-        console.error(`- ${doc.name}`);
-        console.error(`  ${doc.description}`);
-        console.error(`  Tags: ${doc.tags?.join(', ') || 'none'}`);
-      });
-    });
+    // Initialize server with proper configuration
+    this.server = new Server(implementation, SERVER_OPTIONS);
+        
+    // Log initial configuration
+    console.error('Server initialized with storage path:', this.storagePath);
   }
+
+  private async initialize(): Promise<void> {
+    try {
+      console.error('Initializing server...');
+      console.error('Using storage path:', this.storagePath);
+      
+      // Check if storage path exists
+      try {
+        const stats = await fs.stat(this.storagePath);
+        console.error('Storage path exists:', stats.isDirectory());
+      } catch (error) {
+        console.error('Storage path does not exist or is inaccessible:', error);
+      }
+
+      // Initialize FileSystemManager
+      this.fsManager = new FileSystemManager(this.storagePath, {
+        maxSize: ENV.cacheMaxSize,
+        maxAge: ENV.cacheMaxAge,
+        cleanupInterval: ENV.cacheCleanupInterval,
+      });
+
+      // Set up filesystem
+      await this.fsManager.ensureDirectories();
+      
+      // Initialize handlers
+      this.setupErrorHandlers();
+      this.setupResourceHandlers();
+      this.setupToolHandlers();
+
+      // Load initial documentation
+      const savedDocs = await this.fsManager.loadSources();
+
+      if (savedDocs.length === 0) {
+        console.error('No sources found. Saving default documentation...');
+        this.docs = [...defaultDocs];
+      
+        try {
+          await this.fsManager.saveSources(this.docs);
+          console.error('Default documentation saved successfully.');
+        } catch (error) {
+          console.error('Failed to save default documentation:', error);
+          throw new Error('Initialization failed while saving default documentation.');
+        }
+      } else {
+        this.docs = savedDocs;
+        console.error(`Loaded ${savedDocs.length} documentation sources.`);
+      }
+      
+      console.error('Server initialization complete');
+    } catch (error) {
+      console.error('Error during server initialization:', error);
+      throw new Error(`Failed to initialize server: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  
 
   /**
    * Get initial documentation state
@@ -379,6 +420,7 @@ export class DocumentationServer {
         },
       ],
     }));
+    console.error('Tool handlers set:', JSON.stringify(SERVER_OPTIONS.capabilities.tools));
 
     this.server.setRequestHandler(
       CallToolRequestSchema,
@@ -458,6 +500,11 @@ export class DocumentationServer {
       this.docs.push(updatedDoc);
     }
 
+    if (!this.fsManager) {
+      console.error('addDocumentation(): FileSystemManager is not initialized.');
+      throw new Error('FileSystemManager is not initialized.');
+    }
+    
     await this.fsManager.saveSources(this.docs);
 
     return {
@@ -502,6 +549,10 @@ export class DocumentationServer {
 
     try {
       const response = await axios.get(doc.url);
+      if (!this.fsManager) {
+        console.error('updateDocumentation(): FileSystemManager is not initialized.');
+        throw new Error('FileSystemManager is not initialized.');
+      }
       await this.fsManager.saveDocumentation(name, response.data);
 
       doc.lastUpdated = new Date().toISOString();
@@ -532,6 +583,10 @@ export class DocumentationServer {
     let results = [];
 
     try {
+      if (!this.fsManager) {
+        console.error('searchDocumentation(): FileSystemManager failed to initialize. Storage path:', this.storagePath);
+        throw new Error('searchDocumentation(): FileSystemManager is not initialized. Did you forget to call initialize()?');
+      }
       const files = await this.fsManager.listDocumentationFiles();
 
       for (const file of files) {
@@ -575,70 +630,27 @@ export class DocumentationServer {
   /**
    * Starts the server
    */
-  async run() {
-    console.error('\nStarting server...');
-
+  async run(): Promise<void> {
     try {
-      console.error('Ensuring directories...');
-      await this.fsManager.ensureDirectories();
-      console.error('Directories ensured');
-
-      console.error('\nLoading documentation sources...');
-      const savedDocs = await this.fsManager.loadSources();
-      console.error('Loaded docs:', savedDocs.length);
-
-      if (savedDocs.length === 0) {
-        console.error('\nFirst time setup - initializing with default documentation...');
-        console.error('Default docs count:', defaultDocs.length);
-        console.error('Default docs categories:', [...new Set(defaultDocs.map(d => d.category))]);
-        console.error('Default docs:', JSON.stringify(defaultDocs, null, 2).slice(0, 200) + '...');
-
-        this.docs = [...defaultDocs];
-        console.error('\nSaving default docs...');
-        try {
-          await this.fsManager.saveSources(this.docs);
-          console.error('Default docs saved successfully');
-        } catch (error) {
-          console.error('Failed to save default docs:', error);
-          if (error instanceof Error) {
-            console.error('Error details:', error.message);
-            console.error('Stack trace:', error.stack);
-          }
-          throw error;
-        }
-      } else {
-        console.error('\nUsing existing docs');
-        console.error('Categories:', [...new Set(savedDocs.map(d => d.category))]);
-        console.error('Docs:', JSON.stringify(savedDocs, null, 2).slice(0, 200) + '...');
-        this.docs = savedDocs;
-      }
+      console.error('\nStarting server...');
+      console.error('Environment Configuration:');
+      console.error('- MCP_ENV:', process.env.MCP_ENV || 'undefined');
+      console.error('- MCP_STORAGE_PATH:', process.env.MCP_STORAGE_PATH || 'undefined');
+  
+      // Initialize FileSystemManager and server
+      await this.initialize();
+  
+      // Set up transport and start server
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+  
+      console.error('MCP server started successfully.');
     } catch (error) {
-      console.error('\nError during initialization:', error);
-      console.error('Error details:', error instanceof Error ? error.message : String(error));
-      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
-
-      console.error('\nFalling back to default docs');
-      this.docs = [...defaultDocs];
-
-      console.error('Saving default docs as fallback...');
-      await this.fsManager.saveSources(this.docs);
-      console.error('Fallback docs saved');
+      console.error('Error during server run:', error);
+      throw error;
     }
-
-    // Log initial state before starting server
-    console.error(
-      `\nInitial Documentation State ${this.isLocal ? '[LOCAL VERSION]' : '[PRODUCTION VERSION]'}:`
-    );
-    console.error(this.getInitialState());
-
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error(
-      `Documentation MCP server running on stdio ${
-        this.isLocal ? '[LOCAL VERSION]' : '[PRODUCTION VERSION]'
-      }`
-    );
   }
+  
 
   /**
    * Removes documentation source
@@ -651,6 +663,11 @@ export class DocumentationServer {
 
     // Remove from memory and storage
     this.docs.splice(index, 1);
+    if (!this.fsManager) {
+      console.error('removeDocumentation(): FileSystemManager is not initialized.');
+      throw new Error('FileSystemManager is not initialized.');
+    }
+    
     await this.fsManager.saveSources(this.docs);
 
     return {
@@ -662,4 +679,5 @@ export class DocumentationServer {
       ],
     };
   }
+
 }
