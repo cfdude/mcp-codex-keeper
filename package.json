@@ -33,11 +33,14 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",
-    "axios": "^1.6.2",
+    "axios": "^1.7.9",
+    "fs-extra": "^11.2.0",
+    "isexe": "^3.1.1",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "@types/node": "^20.10.4",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.17.12",
     "cross-env": "^7.0.3",
     "typescript": "^5.3.3"
   },

@@ -63,6 +63,7 @@ checkDependencies();
 // Start server
 const server = new DocumentationServer();
 
+// Use proper async handling for the server start
 server.run().catch(error => {
   console.error('[Fatal Error] Failed to start server:', error);
   process.exit(1);
