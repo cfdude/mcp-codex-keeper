@@ -4,6 +4,7 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { DocSource } from '../types/index.js';
+import axios from 'axios';
 
 /**
  * Error thrown when file system operations fail
@@ -262,31 +263,246 @@ export class FileSystemManager {
   }
 
   /**
-   * Searches for text in cached documentation using streams
+   * Searches for text in cached documentation with advanced scoring
    * @param name - Documentation name
    * @param searchQuery - Text to search for
-   * @returns Whether the text was found
+   * @param doc - Optional document metadata for scoring
+   * @returns Score object with match details or null if no match
    */
-  async searchInDocumentation(name: string, searchQuery: string): Promise<boolean> {
+  async searchInDocumentation(
+    name: string,
+    searchQuery: string,
+    doc?: DocSource
+  ): Promise<{ score: number; matches: string[] } | null> {
     try {
       const filename = this.getDocumentationFileName(name);
       const filePath = path.join(this.cacheDir, filename);
 
-      const content = await fs.readFile(filePath, 'utf-8');
-      const chunks = content.match(/.{1,1048576}/g) || []; // Split into 1MB chunks
+      // Split search query into keywords
+      const keywords = searchQuery.toLowerCase()
+        .split(/\s+/)
+        .filter(kw => kw.length > 1); // Filter out single-character words
+      
+      if (keywords.length === 0) {
+        return null;
+      }
 
-      for (const chunk of chunks) {
-        if (chunk.toLowerCase().includes(searchQuery.toLowerCase())) {
-          return true;
+      // Check if file exists
+      let fileExists = false;
+      try {
+        await fs.access(filePath);
+        fileExists = true;
+      } catch {
+        // File doesn't exist, but we'll still check metadata
+        fileExists = false;
+      }
+
+      let totalScore = 0;
+      const matches: string[] = [];
+      
+      // If file exists, search content
+      if (fileExists) {
+        try {
+          // Read content
+          const content = await fs.readFile(filePath, 'utf-8');
+          const contentLower = content.toLowerCase();
+          
+          const matchedKeywords = new Set<string>();
+          
+          // Check for exact phrase match first (highest score)
+          const exactPhraseScore = 100;
+          if (contentLower.includes(searchQuery.toLowerCase())) {
+            totalScore += exactPhraseScore;
+            
+            // Extract context around the exact match
+            const matchIndex = contentLower.indexOf(searchQuery.toLowerCase());
+            const contextStart = Math.max(0, matchIndex - 50);
+            const contextEnd = Math.min(content.length, matchIndex + searchQuery.length + 50);
+            const matchContext = content.substring(contextStart, contextEnd).trim();
+            
+            matches.push(`Exact match: "${matchContext}"`);
+          }
+          
+          // Check for individual keyword matches
+          for (const keyword of keywords) {
+            if (contentLower.includes(keyword)) {
+              matchedKeywords.add(keyword);
+              
+              // Find a representative match for this keyword
+              const matchIndex = contentLower.indexOf(keyword);
+              const contextStart = Math.max(0, matchIndex - 30);
+              const contextEnd = Math.min(content.length, matchIndex + keyword.length + 30);
+              const matchContext = content.substring(contextStart, contextEnd).trim();
+              
+              if (!matches.some(m => m.includes(matchContext))) {
+                matches.push(`Keyword match (${keyword}): "${matchContext}"`);
+              }
+            }
+          }
+          
+          // Calculate keyword match score
+          const keywordMatchScore = (matchedKeywords.size / keywords.length) * 50;
+          totalScore += keywordMatchScore;
+        } catch (readError) {
+          console.error(`Error reading file ${filePath}:`, readError);
+          // Continue to metadata matching even if file read fails
         }
       }
-      return false;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return false;
+      
+      // Add metadata matching score if document metadata is provided
+      if (doc) {
+        let metadataScore = 0;
+        const metadataMatches: string[] = [];
+        
+        // Check name (higher weight than before)
+        if (doc.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+          metadataScore += 50;
+          metadataMatches.push(`Name match: "${doc.name}"`);
+        }
+        
+        // Check description (higher weight than before)
+        if (doc.description.toLowerCase().includes(searchQuery.toLowerCase())) {
+          metadataScore += 40;
+          metadataMatches.push(`Description match: "${doc.description}"`);
+        }
+        
+        // Check category
+        if (doc.category.toLowerCase().includes(searchQuery.toLowerCase())) {
+          metadataScore += 20;
+          metadataMatches.push(`Category match: "${doc.category}"`);
+        }
+        
+        // Check tags (higher weight for tags)
+        if (doc.tags) {
+          // Check for exact tag matches
+          for (const tag of doc.tags) {
+            // Check if any keyword is part of the tag
+            for (const keyword of keywords) {
+              if (tag.toLowerCase().includes(keyword)) {
+                metadataScore += 33.33;
+                metadataMatches.push(`Tag match: "${tag}" contains "${keyword}"`);
+                break;
+              }
+            }
+            
+            // Check if the tag is a hyphenated version of the search query
+            // e.g., "vector database" matches "vector-database"
+            const normalizedTag = tag.toLowerCase().replace(/-/g, ' ');
+            if (normalizedTag.includes(searchQuery.toLowerCase())) {
+              metadataScore += 50;
+              metadataMatches.push(`Tag normalized match: "${tag}" matches "${searchQuery}"`);
+            }
+          }
+        }
+        
+        totalScore += metadataScore;
+        matches.push(...metadataMatches);
       }
-      throw new FileSystemError(`Failed to search documentation: ${name}`, error);
+      
+      // Return null if no matches found
+      if (totalScore === 0) {
+        return null;
+      }
+      
+      return {
+        score: totalScore,
+        matches: matches
+      };
+    } catch (error) {
+      console.error(`Error in searchInDocumentation for ${name}:`, error);
+      
+      // Even if there's an error, still try to match metadata if document is provided
+      if (doc) {
+        const metadataScore = this.calculateMetadataOnlyScore(doc, searchQuery);
+        if (metadataScore > 0) {
+          return {
+            score: metadataScore,
+            matches: this.generateMetadataOnlyMatches(doc, searchQuery)
+          };
+        }
+      }
+      
+      return null;
     }
+  }
+  
+  /**
+   * Calculate metadata-only score for a document
+   * Used as a fallback when file access fails
+   */
+  private calculateMetadataOnlyScore(doc: DocSource, searchQuery: string): number {
+    const queryLower = searchQuery.toLowerCase();
+    const keywords = queryLower.split(/\s+/).filter(kw => kw.length > 1);
+    let score = 0;
+    
+    // Check name
+    if (doc.name.toLowerCase().includes(queryLower)) {
+      score += 50;
+    }
+    
+    // Check description
+    if (doc.description.toLowerCase().includes(queryLower)) {
+      score += 40;
+    }
+    
+    // Check category
+    if (doc.category.toLowerCase().includes(queryLower)) {
+      score += 20;
+    }
+    
+    // Check tags
+    if (doc.tags) {
+      for (const tag of doc.tags) {
+        if (tag.toLowerCase().includes(queryLower) ||
+            tag.toLowerCase().replace(/-/g, ' ').includes(queryLower)) {
+          score += 50;
+        }
+        
+        for (const keyword of keywords) {
+          if (tag.toLowerCase().includes(keyword)) {
+            score += 25;
+          }
+        }
+      }
+    }
+    
+    return score;
+  }
+  
+  /**
+   * Generate metadata-only matches for search results
+   * Used as a fallback when file access fails
+   */
+  private generateMetadataOnlyMatches(doc: DocSource, searchQuery: string): string[] {
+    const queryLower = searchQuery.toLowerCase();
+    const matches: string[] = [];
+    
+    // Check name
+    if (doc.name.toLowerCase().includes(queryLower)) {
+      matches.push(`Name match: "${doc.name}"`);
+    }
+    
+    // Check description
+    if (doc.description.toLowerCase().includes(queryLower)) {
+      matches.push(`Description match: "${doc.description}"`);
+    }
+    
+    // Check category
+    if (doc.category.toLowerCase().includes(queryLower)) {
+      matches.push(`Category match: "${doc.category}"`);
+    }
+    
+    // Check tags
+    if (doc.tags) {
+      for (const tag of doc.tags) {
+        if (tag.toLowerCase().includes(queryLower) ||
+            tag.toLowerCase().replace(/-/g, ' ').includes(queryLower)) {
+          matches.push(`Tag match: "${tag}"`);
+        }
+      }
+    }
+    
+    return matches;
   }
 
   /**
@@ -350,15 +566,143 @@ export class FileSystemManager {
   getCachePath(): string {
     return this.cacheDir;
   }
+/**
+ * Updates cache configuration
+ * @param config - New cache configuration
+ */
+updateCacheConfig(config: Partial<CacheConfig>): void {
+  this.cacheConfig = { ...this.cacheConfig, ...config };
+  this.startCleanupTimer(); // Restart timer with new interval
+}
 
-  /**
-   * Updates cache configuration
-   * @param config - New cache configuration
-   */
-  updateCacheConfig(config: Partial<CacheConfig>): void {
-    this.cacheConfig = { ...this.cacheConfig, ...config };
-    this.startCleanupTimer(); // Restart timer with new interval
+/**
+ * Explicitly updates the cache for all documentation or a specific document
+ * This ensures that newly added or updated documentation is immediately searchable
+ * @param name - Optional name of specific documentation to update
+ * @returns Promise resolving to number of documents updated
+ */
+async updateCache(name?: string): Promise<number> {
+  try {
+    console.error(`Updating cache${name ? ` for ${name}` : ' for all documents'}`);
+    
+    // If a specific document is specified, only update that one
+    if (name) {
+      const doc = await this.loadSources().then(docs =>
+        docs.find(d => d.name === name)
+      );
+      
+      if (!doc) {
+        console.error(`Document "${name}" not found for cache update`);
+        return 0;
+      }
+      
+      try {
+        // Use a timeout to prevent hanging on slow responses
+        const response = await axios.get(doc.url, {
+          timeout: 10000, // 10 second timeout
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; CodexKeeper/1.0; +https://github.com/onvex-ai/codex-keeper)'
+          }
+        });
+        
+        await this.saveDocumentation(name, response.data);
+        console.error(`Cache updated for document: ${name}`);
+        return 1;
+      } catch (error) {
+        console.error(`Failed to update cache for ${name}:`, error);
+        // Create a minimal placeholder content to ensure the document is at least searchable by metadata
+        const placeholderContent = `
+          <html>
+            <head><title>${name}</title></head>
+            <body>
+              <h1>${name}</h1>
+              <p>${doc.description || 'No description available'}</p>
+              <p>Tags: ${doc.tags?.join(', ') || 'None'}</p>
+              <p>Category: ${doc.category}</p>
+              <p>URL: <a href="${doc.url}">${doc.url}</a></p>
+              <p>Note: This is a placeholder. The actual content could not be fetched.</p>
+            </body>
+          </html>
+        `;
+        
+        try {
+          await this.saveDocumentation(name, placeholderContent);
+          console.error(`Created placeholder cache for ${name}`);
+          return 1;
+        } catch (saveError) {
+          console.error(`Failed to create placeholder for ${name}:`, saveError);
+          return 0;
+        }
+      }
+    }
+    
+    // Otherwise update all documents
+    const docs = await this.loadSources();
+    let updatedCount = 0;
+    let failedCount = 0;
+    
+    // Process documents in batches to avoid overwhelming the network
+    const batchSize = 5;
+    for (let i = 0; i < docs.length; i += batchSize) {
+      const batch = docs.slice(i, i + batchSize);
+      
+      // Process batch in parallel
+      const results = await Promise.all(
+        batch.map(async (doc) => {
+          try {
+            const response = await axios.get(doc.url, {
+              timeout: 10000, // 10 second timeout
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; CodexKeeper/1.0; +https://github.com/onvex-ai/codex-keeper)'
+              }
+            });
+            
+            await this.saveDocumentation(doc.name, response.data);
+            console.error(`Cache updated for document: ${doc.name}`);
+            return true;
+          } catch (error) {
+            console.error(`Failed to update cache for ${doc.name}:`, error);
+            
+            // Create a minimal placeholder content
+            const placeholderContent = `
+              <html>
+                <head><title>${doc.name}</title></head>
+                <body>
+                  <h1>${doc.name}</h1>
+                  <p>${doc.description || 'No description available'}</p>
+                  <p>Tags: ${doc.tags?.join(', ') || 'None'}</p>
+                  <p>Category: ${doc.category}</p>
+                  <p>URL: <a href="${doc.url}">${doc.url}</a></p>
+                  <p>Note: This is a placeholder. The actual content could not be fetched.</p>
+                </body>
+              </html>
+            `;
+            
+            try {
+              await this.saveDocumentation(doc.name, placeholderContent);
+              console.error(`Created placeholder cache for ${doc.name}`);
+              return true;
+            } catch (saveError) {
+              console.error(`Failed to create placeholder for ${doc.name}:`, saveError);
+              return false;
+            }
+          }
+        })
+      );
+      
+      // Count successes and failures
+      updatedCount += results.filter(Boolean).length;
+      failedCount += results.filter(result => !result).length;
+    }
+    
+    console.error(`Cache update completed. Updated ${updatedCount}/${docs.length} documents. Failed: ${failedCount}`);
+    return updatedCount;
+  } catch (error) {
+    console.error('Cache update failed:', error);
+    throw new FileSystemError('Failed to update cache', error);
   }
+}
+
 
   /**
    * Cleanup resources

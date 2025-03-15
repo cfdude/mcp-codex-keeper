@@ -100,6 +100,7 @@ const SERVER_CAPABILITIES: ServerCapabilities = {
     update_documentation: true,
     search_documentation: true,
     remove_documentation: true,
+    update_cache: true,
   },
   resources: {
     'docs://sources': {
@@ -326,6 +327,24 @@ export class DocumentationServer {
           },
         },
         {
+          name: 'update_cache',
+          description:
+            'Update the documentation cache to ensure all documentation is searchable. Use this after adding or updating documentation, especially when performing bulk operations.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Optional name of specific documentation to update. If not provided, all documentation will be updated.',
+              },
+              force: {
+                type: 'boolean',
+                description: 'Force update even if recently updated',
+              },
+            },
+          },
+        },
+        {
           name: 'add_documentation',
           description:
             'Add a new documentation source. When working on tasks, add any useful documentation you discover to help maintain a comprehensive knowledge base.',
@@ -420,7 +439,7 @@ export class DocumentationServer {
         },
       ],
     }));
-    console.error('Tool handlers set:', JSON.stringify(SERVER_OPTIONS.capabilities.tools));
+    console.error('Tool handlers set:', JSON.stringify(SERVER_CAPABILITIES.tools));
 
     this.server.setRequestHandler(
       CallToolRequestSchema,
@@ -441,6 +460,11 @@ export class DocumentationServer {
             return this.searchDocumentation(validateSearchDocArgs(args));
           case 'remove_documentation':
             return this.removeDocumentation(args.name as string);
+          case 'update_cache':
+            return this.updateCache({
+              name: typeof args.name === 'string' ? args.name : undefined,
+              force: args.force === true,
+            });
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
         }
@@ -505,7 +529,42 @@ export class DocumentationServer {
       throw new Error('FileSystemManager is not initialized.');
     }
     
+    // Save the updated sources list first
     await this.fsManager.saveSources(this.docs);
+    
+    // Update the cache for this document to make it immediately searchable
+    let cacheUpdateSuccess = false;
+    try {
+      // Try to update the cache
+      await this.fsManager.updateCache(name);
+      cacheUpdateSuccess = true;
+    } catch (error) {
+      console.error(`Warning: Failed to update cache for ${name}:`, error);
+      
+      // Create a minimal placeholder content to ensure the document is at least searchable by metadata
+      try {
+        const placeholderContent = `
+          <html>
+            <head><title>${name}</title></head>
+            <body>
+              <h1>${name}</h1>
+              <p>${description || 'No description available'}</p>
+              <p>Tags: ${tags?.join(', ') || 'None'}</p>
+              <p>Category: ${category}</p>
+              <p>URL: <a href="${url}">${url}</a></p>
+              <p>Note: This is a placeholder. The actual content could not be fetched.</p>
+            </body>
+          </html>
+        `;
+        
+        await this.fsManager.saveDocumentation(name, placeholderContent);
+        console.error(`Created placeholder cache for ${name}`);
+        cacheUpdateSuccess = true;
+      } catch (saveError) {
+        console.error(`Failed to create placeholder for ${name}:`, saveError);
+        // Continue even if cache update fails - the document is still added to sources
+      }
+    }
 
     return {
       content: [
@@ -514,7 +573,7 @@ export class DocumentationServer {
           text:
             existingIndex !== -1
               ? `Updated documentation: ${name}`
-              : `Added documentation: ${name}`,
+              : `Added documentation: ${name}${cacheUpdateSuccess ? '' : ' (Note: Document was added but cache update failed. Use the update_cache tool to make it searchable.)'}`,
         },
       ],
     };
@@ -574,50 +633,162 @@ export class DocumentationServer {
       );
     }
   }
+  
+  /**
+   * Updates the documentation cache
+   */
+  private async updateCache(args: { name?: string; force?: boolean }) {
+    try {
+      if (!this.fsManager) {
+        console.error('updateCache(): FileSystemManager is not initialized.');
+        throw new Error('FileSystemManager is not initialized.');
+      }
+      
+      const { name, force } = args;
+      
+      // If a specific document is specified
+      if (name) {
+        const doc = this.docs.find(d => d.name === name);
+        
+        if (!doc) {
+          throw new McpError(ErrorCode.InvalidRequest, `Documentation "${name}" not found`);
+        }
+        
+        // Skip update if recently updated and not forced
+        if (!force && doc.lastUpdated) {
+          const lastUpdate = new Date(doc.lastUpdated);
+          const hoursSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60);
+          if (hoursSinceUpdate < 24) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Cache for "${name}" was recently updated. Use force=true to update anyway.`,
+                },
+              ],
+            };
+          }
+        }
+        
+        await this.fsManager.updateCache(name);
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Cache updated for documentation: ${name}`,
+            },
+          ],
+        };
+      }
+      
+      // Update all documents
+      const updatedCount = await this.fsManager.updateCache();
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Cache update completed. Updated ${updatedCount}/${this.docs.length} documents.`,
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Failed to update cache: ${errorMessage}`
+      );
+    }
+  }
 
   /**
-   * Searches through documentation content
+   * Searches through documentation content with improved scoring
    */
   private async searchDocumentation(args: { query: string; category?: DocCategory; tag?: string }) {
     const { query, category, tag } = args;
-    let results = [];
+    let searchResults = [];
 
     try {
       if (!this.fsManager) {
         console.error('searchDocumentation(): FileSystemManager failed to initialize. Storage path:', this.storagePath);
         throw new Error('searchDocumentation(): FileSystemManager is not initialized. Did you forget to call initialize()?');
       }
-      const files = await this.fsManager.listDocumentationFiles();
-
-      for (const file of files) {
-        const doc = this.docs.find(
-          d => file === `${d.name.toLowerCase().replace(/\s+/g, '_')}.html`
-        );
-
-        if (doc) {
-          // Apply filters
-          if (category && doc.category !== category) continue;
-          if (tag && !doc.tags?.includes(tag)) continue;
-
-          // Search content
-          const matches = await this.fsManager.searchInDocumentation(doc.name, query);
-          if (matches) {
-            results.push({
+      
+      // Filter docs based on category and tag first
+      let filteredDocs = this.docs;
+      
+      if (category) {
+        filteredDocs = filteredDocs.filter(doc => doc.category === category);
+      }
+      
+      if (tag) {
+        filteredDocs = filteredDocs.filter(doc => doc.tags?.includes(tag));
+      }
+      
+      // Split query into keywords for better matching
+      const queryLower = query.toLowerCase();
+      const keywords = queryLower.split(/\s+/).filter(kw => kw.length > 1);
+      
+      // Process each document in the filtered list
+      for (const doc of filteredDocs) {
+        // Try to search in the document content if it's cached
+        const searchResult = await this.fsManager.searchInDocumentation(doc.name, query, doc);
+        
+        if (searchResult) {
+          searchResults.push({
+            doc: {
               name: doc.name,
               url: doc.url,
               category: doc.category,
+              description: doc.description,
               tags: doc.tags,
               lastUpdated: doc.lastUpdated,
+            },
+            score: searchResult.score,
+            matches: searchResult.matches.slice(0, 3) // Limit to top 3 matches for readability
+          });
+        } else {
+          // If document isn't cached or no content match, still check metadata
+          // This ensures newly added documents appear in search results
+          const metadataScore = this.calculateMetadataScore(doc, query);
+          
+          if (metadataScore > 0) {
+            searchResults.push({
+              doc: {
+                name: doc.name,
+                url: doc.url,
+                category: doc.category,
+                description: doc.description,
+                tags: doc.tags,
+                lastUpdated: doc.lastUpdated,
+              },
+              score: metadataScore,
+              matches: this.generateMetadataMatches(doc, query)
             });
           }
         }
       }
 
+      // Sort results by score (highest first)
+      searchResults.sort((a, b) => b.score - a.score);
+      
+      // Format results for display
+      const formattedResults = searchResults.map(result => ({
+        name: result.doc.name,
+        url: result.doc.url,
+        category: result.doc.category,
+        description: result.doc.description,
+        tags: result.doc.tags,
+        relevance_score: result.score,
+        match_highlights: result.matches
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(results, null, 2),
+            text: JSON.stringify(formattedResults, null, 2),
           },
         ],
       };
@@ -625,6 +796,180 @@ export class DocumentationServer {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new McpError(ErrorCode.InternalError, `Search failed: ${errorMessage}`);
     }
+  }
+  
+  /**
+   * Calculate metadata score for a document based on search query
+   * This is used when document content isn't cached yet
+   */
+  private calculateMetadataScore(doc: DocSource, query: string): number {
+    const queryLower = query.toLowerCase();
+    const keywords = queryLower.split(/\s+/).filter(kw => kw.length > 1);
+    let score = 0;
+    
+    // Calculate exact phrase match score
+    // Exact phrase matches are highly valuable
+    if (doc.name.toLowerCase().includes(queryLower)) {
+      score += 150; // Exact name match is extremely relevant
+    }
+    
+    if (doc.description.toLowerCase().includes(queryLower)) {
+      score += 100; // Exact description match is very relevant
+    }
+    
+    // Calculate keyword match scores
+    // This helps with partial matches and multi-word queries
+    for (const keyword of keywords) {
+      // Name keyword matches (high priority)
+      if (doc.name.toLowerCase().includes(keyword)) {
+        // Word boundary match is better than substring match
+        const wordBoundaryRegex = new RegExp(`\\b${keyword}\\b`, 'i');
+        if (wordBoundaryRegex.test(doc.name)) {
+          score += 75; // Word boundary match in name
+        } else {
+          score += 50; // Substring match in name
+        }
+      }
+      
+      // Description keyword matches
+      if (doc.description.toLowerCase().includes(keyword)) {
+        const wordBoundaryRegex = new RegExp(`\\b${keyword}\\b`, 'i');
+        if (wordBoundaryRegex.test(doc.description)) {
+          score += 40; // Word boundary match in description
+        } else {
+          score += 25; // Substring match in description
+        }
+      }
+      
+      // Category keyword matches
+      if (doc.category.toLowerCase().includes(keyword)) {
+        score += 30;
+      }
+    }
+    
+    // Check tags (very important for relevance)
+    if (doc.tags) {
+      // Calculate how many query words match across all tags
+      const queryWords = new Set(queryLower.split(/\s+/).filter(w => w.length > 1));
+      let matchedQueryWords = 0;
+      
+      for (const tag of doc.tags) {
+        // Direct tag match with full query
+        if (tag.toLowerCase() === queryLower) {
+          score += 200; // Exact tag match is extremely relevant
+        }
+        
+        // Tag contains full query
+        else if (tag.toLowerCase().includes(queryLower)) {
+          score += 150;
+        }
+        
+        // Normalized tag match (e.g., "vector-database" matches "vector database")
+        else if (tag.toLowerCase().replace(/-/g, ' ').includes(queryLower)) {
+          score += 150;
+        }
+        
+        // Check for individual query words in tags
+        for (const word of queryWords) {
+          if (tag.toLowerCase().includes(word) ||
+              tag.toLowerCase().replace(/-/g, ' ').includes(word)) {
+            matchedQueryWords++;
+            break; // Count each query word only once
+          }
+        }
+      }
+      
+      // Add score based on percentage of query words matched in tags
+      if (queryWords.size > 0) {
+        const matchPercentage = matchedQueryWords / queryWords.size;
+        score += matchPercentage * 100;
+      }
+    }
+    
+    return score;
+  }
+  
+  /**
+   * Generate metadata match highlights for search results
+   */
+  private generateMetadataMatches(doc: DocSource, query: string): string[] {
+    const queryLower = query.toLowerCase();
+    const keywords = queryLower.split(/\s+/).filter(kw => kw.length > 1);
+    const matches: string[] = [];
+    
+    // Check name for exact phrase match
+    if (doc.name.toLowerCase().includes(queryLower)) {
+      matches.push(`Name match: "${doc.name}"`);
+    } else {
+      // Check for keyword matches in name
+      const nameMatches = keywords
+        .filter(keyword => doc.name.toLowerCase().includes(keyword))
+        .map(keyword => `Name contains "${keyword}"`);
+      
+      if (nameMatches.length > 0) {
+        matches.push(nameMatches[0]); // Add the first keyword match
+      }
+    }
+    
+    // Check description for exact phrase match
+    if (doc.description.toLowerCase().includes(queryLower)) {
+      // Get context around the match
+      const matchIndex = doc.description.toLowerCase().indexOf(queryLower);
+      const contextStart = Math.max(0, matchIndex - 20);
+      const contextEnd = Math.min(doc.description.length, matchIndex + queryLower.length + 20);
+      const context = doc.description.substring(contextStart, contextEnd);
+      
+      matches.push(`Description match: "...${context}..."`);
+    } else {
+      // Check for keyword matches in description
+      for (const keyword of keywords) {
+        if (doc.description.toLowerCase().includes(keyword)) {
+          const matchIndex = doc.description.toLowerCase().indexOf(keyword);
+          const contextStart = Math.max(0, matchIndex - 15);
+          const contextEnd = Math.min(doc.description.length, matchIndex + keyword.length + 15);
+          const context = doc.description.substring(contextStart, contextEnd);
+          
+          matches.push(`Description contains "${keyword}": "...${context}..."`);
+          break;
+        }
+      }
+    }
+    
+    // Check tags
+    if (doc.tags) {
+      // Check for exact query match in tags
+      const exactTagMatches = doc.tags.filter(tag =>
+        tag.toLowerCase() === queryLower ||
+        tag.toLowerCase().replace(/-/g, ' ') === queryLower
+      );
+      
+      if (exactTagMatches.length > 0) {
+        matches.push(`Tag exact match: "${exactTagMatches[0]}"`);
+      } else {
+        // Check for tags containing the query
+        const containsTagMatches = doc.tags.filter(tag =>
+          tag.toLowerCase().includes(queryLower) ||
+          tag.toLowerCase().replace(/-/g, ' ').includes(queryLower)
+        );
+        
+        if (containsTagMatches.length > 0) {
+          matches.push(`Tag match: "${containsTagMatches[0]}" contains "${query}"`);
+        } else {
+          // Check for keyword matches in tags
+          for (const tag of doc.tags) {
+            for (const keyword of keywords) {
+              if (tag.toLowerCase().includes(keyword) ||
+                  tag.toLowerCase().replace(/-/g, ' ').includes(keyword)) {
+                matches.push(`Tag contains keyword: "${tag}" contains "${keyword}"`);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    return matches;
   }
 
   /**

@@ -23,6 +23,9 @@ data/
 .env
 .env.local
 
+# Cache
+cache/
+
 # Test coverage
 coverage/
 .nyc_output/
@@ -34,3 +37,5 @@ temp/
 
 # Internal documentation
 PROJECT_SUMMARY.md
+sources.json
+
