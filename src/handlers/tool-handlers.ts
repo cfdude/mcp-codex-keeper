@@ -46,6 +46,14 @@ export function setupToolHandlers(
               type: 'string',
               description: 'Filter documentation by tag',
             },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of documents to return (default: 10)',
+            },
+            offset: {
+              type: 'number',
+              description: 'Number of documents to skip (for pagination)',
+            },
           },
         },
       },
@@ -141,6 +149,14 @@ export function setupToolHandlers(
               type: 'string',
               description: 'Filter by tag',
             },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of results to return (default: 10)',
+            },
+            offset: {
+              type: 'number',
+              description: 'Number of results to skip (for pagination)',
+            },
           },
           required: ['query'],
         },
@@ -174,13 +190,20 @@ export function setupToolHandlers(
           return handleListDocumentation(docService, {
             category: isValidCategory(args.category) ? args.category : undefined,
             tag: typeof args.tag === 'string' ? args.tag : undefined,
+            limit: typeof args.limit === 'number' && args.limit > 0 ? args.limit : 10,
+            offset: typeof args.offset === 'number' && args.offset >= 0 ? args.offset : 0,
           });
         case 'add_documentation':
           return handleAddDocumentation(docService, validateAddDocArgs(args));
         case 'update_documentation':
           return handleUpdateDocumentation(docService, validateUpdateDocArgs(args));
         case 'search_documentation':
-          return handleSearchDocumentation(docService, searchService, validateSearchDocArgs(args));
+          const searchArgs = validateSearchDocArgs(args);
+          return handleSearchDocumentation(docService, searchService, {
+            ...searchArgs,
+            limit: typeof args.limit === 'number' && args.limit > 0 ? args.limit : 10,
+            offset: typeof args.offset === 'number' && args.offset >= 0 ? args.offset : 0,
+          });
         case 'remove_documentation':
           return handleRemoveDocumentation(docService, args.name as string);
         case 'update_cache':
@@ -200,18 +223,37 @@ export function setupToolHandlers(
  */
 async function handleListDocumentation(
   docService: DocumentationService,
-  args: { category?: string; tag?: string }
+  args: { category?: string; tag?: string; limit?: number; offset?: number }
 ) {
+  // Get all documentation matching the filters
   const filteredDocs = docService.listDocumentation({
     category: args.category as any,
     tag: args.tag
   });
   
+  // Apply pagination
+  const totalCount = filteredDocs.length;
+  const offset = args.offset || 0;
+  const limit = args.limit || 10;
+  const end = Math.min(offset + limit, totalCount);
+  const paginatedDocs = filteredDocs.slice(offset, end);
+  
+  // Create a response with pagination metadata
+  const response = {
+    pagination: {
+      total: totalCount,
+      offset: offset,
+      limit: limit,
+      returned: paginatedDocs.length
+    },
+    results: paginatedDocs
+  };
+  
   return {
     content: [
       {
         type: 'text',
-        text: JSON.stringify(filteredDocs, null, 2),
+        text: JSON.stringify(response, null, 2),
       },
     ],
   };
@@ -261,13 +303,36 @@ async function handleSearchDocumentation(
   searchService: SearchService,
   args: any
 ) {
-  const results = await searchService.searchDocumentation(docService.getAllDocs(), args);
+  // Perform the search
+  const results = await searchService.searchDocumentation(docService.getAllDocs(), {
+    query: args.query,
+    category: args.category,
+    tag: args.tag
+  });
+  
+  // Apply pagination
+  const totalCount = results.length;
+  const offset = args.offset || 0;
+  const limit = args.limit || 10;
+  const end = Math.min(offset + limit, totalCount);
+  const paginatedResults = results.slice(offset, end);
+  
+  // Create a response with pagination metadata
+  const response = {
+    pagination: {
+      total: totalCount,
+      offset: offset,
+      limit: limit,
+      returned: paginatedResults.length
+    },
+    results: paginatedResults
+  };
   
   return {
     content: [
       {
         type: 'text',
-        text: JSON.stringify(results, null, 2),
+        text: JSON.stringify(response, null, 2),
       },
     ],
   };
