@@ -7,7 +7,7 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { DocSource } from '../../types/index.js';
-import { FileSystemError } from './index.js';
+import { FileSystemError } from '../fs.js';
 
 /**
  * Manages basic file system operations for documentation storage
