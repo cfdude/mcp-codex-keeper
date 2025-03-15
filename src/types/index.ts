@@ -43,6 +43,10 @@ export interface ListDocsArgs {
   category?: DocCategory;
   /** Optional tag filter */
   tag?: string;
+  /** Maximum number of documents to return */
+  limit?: number;
+  /** Number of documents to skip (for pagination) */
+  offset?: number;
 }
 
 /**
@@ -86,6 +90,10 @@ export interface SearchDocArgs {
   category?: DocCategory;
   /** Optional tag filter */
   tag?: string;
+  /** Maximum number of results to return */
+  limit?: number;
+  /** Number of results to skip (for pagination) */
+  offset?: number;
 }
 
 /**

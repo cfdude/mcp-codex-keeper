@@ -125,18 +125,20 @@ export class CacheManager {
         try {
           // Use a timeout to prevent hanging on slow responses
           const response = await axios.get(doc.url, {
-            timeout: 10000, // 10 second timeout
+            timeout: 15000, // Increased timeout to 15 seconds
             headers: {
               'User-Agent': 'Mozilla/5.0 (compatible; CodexKeeper/1.0; +https://github.com/onvex-ai/codex-keeper)'
-            }
+            },
+            validateStatus: (status) => status < 500 // Accept any status code less than 500
           });
           
+          // Save the content even if it's an error page, as it's better than nothing for search
           await this.fileManager.saveDocumentation(name, response.data);
           console.error(`Cache updated for document: ${name}`);
           return 1;
         } catch (error) {
           console.error(`Failed to update cache for ${name}:`, error);
-          // Create a minimal placeholder content to ensure the document is at least searchable by metadata
+          // Create a more detailed placeholder content to ensure the document is at least searchable by metadata
           const placeholderContent = this.createPlaceholderContent(doc);
           
           try {
@@ -210,16 +212,34 @@ export class CacheManager {
    * @returns HTML content
    */
   private createPlaceholderContent(doc: DocSource): string {
+    // Create a more detailed placeholder with repeated keywords to improve search matching
     return `
       <html>
-        <head><title>${doc.name}</title></head>
+        <head>
+          <title>${doc.name}</title>
+          <meta name="description" content="${doc.description || 'No description available'}">
+          <meta name="keywords" content="${doc.tags?.join(', ') || ''}">
+          <meta name="category" content="${doc.category}">
+        </head>
         <body>
           <h1>${doc.name}</h1>
-          <p>${doc.description || 'No description available'}</p>
-          <p>Tags: ${doc.tags?.join(', ') || 'None'}</p>
-          <p>Category: ${doc.category}</p>
-          <p>URL: <a href="${doc.url}">${doc.url}</a></p>
-          <p>Note: This is a placeholder. The actual content could not be fetched.</p>
+          <div class="description">
+            <h2>Description</h2>
+            <p>${doc.description || 'No description available'}</p>
+            <p>${doc.description || 'No description available'}</p>
+          </div>
+          <div class="metadata">
+            <h2>Metadata</h2>
+            <p>Tags: ${doc.tags?.join(', ') || 'None'}</p>
+            <p>Category: ${doc.category}</p>
+            <p>URL: <a href="${doc.url}">${doc.url}</a></p>
+            <p>Last Updated: ${doc.lastUpdated || new Date().toISOString()}</p>
+          </div>
+          <div class="content">
+            <h2>Content</h2>
+            <p>Note: This is a placeholder. The actual content could not be fetched.</p>
+            <p>Keywords: ${doc.tags?.join(' ') || ''} ${doc.name} ${doc.category}</p>
+          </div>
         </body>
       </html>
     `;

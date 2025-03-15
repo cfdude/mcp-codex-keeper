@@ -106,12 +106,13 @@ export class DocumentationService {
     // Save the updated sources list first
     await this.fsManager.saveSources(this.docs);
     
-    // Update the cache for this document to make it immediately searchable
+    // Always attempt to update the cache for this document to make it immediately searchable
     let cacheUpdateSuccess = false;
     try {
-      // Try to update the cache
+      // Force update the cache to ensure it's refreshed
       await this.fsManager.updateCache(name);
       cacheUpdateSuccess = true;
+      console.error(`Cache successfully updated for ${name}`);
     } catch (error) {
       console.error(`Warning: Failed to update cache for ${name}:`, error);
       cacheUpdateSuccess = false;
@@ -150,7 +151,9 @@ export class DocumentationService {
     }
 
     try {
+      // Always force update the cache to ensure it's refreshed
       await this.fsManager.updateCache(name);
+      console.error(`Cache successfully updated for ${name}`);
 
       doc.lastUpdated = new Date().toISOString();
       await this.fsManager.saveSources(this.docs);

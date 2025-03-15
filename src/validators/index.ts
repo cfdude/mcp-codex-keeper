@@ -140,9 +140,22 @@ export function validateSearchDocArgs(args: Record<string, unknown>): SearchDocA
     throw new McpError(ErrorCode.InvalidParams, 'Invalid category');
   }
 
+  // Validate pagination parameters
+  const limit = typeof args.limit === 'number' ? args.limit : undefined;
+  if (limit !== undefined && (limit <= 0 || !Number.isInteger(limit))) {
+    throw new McpError(ErrorCode.InvalidParams, 'Limit must be a positive integer');
+  }
+
+  const offset = typeof args.offset === 'number' ? args.offset : undefined;
+  if (offset !== undefined && (offset < 0 || !Number.isInteger(offset))) {
+    throw new McpError(ErrorCode.InvalidParams, 'Offset must be a non-negative integer');
+  }
+
   return {
     query: args.query.trim(),
     category: category as DocCategory | undefined,
     tag: typeof args.tag === 'string' ? args.tag.trim() : undefined,
+    limit,
+    offset
   };
 }

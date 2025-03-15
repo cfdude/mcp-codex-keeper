@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-03-15
+
+### Added
+- Pagination support for `list_documentation` and `search_documentation` functions
+  - Added `limit` parameter (default: 10) to control the number of results returned
+  - Added `offset` parameter for pagination
+  - Added pagination metadata in response (total, limit, offset, hasMore)
+
+### Fixed
+- Improved cache update mechanism for newly added or updated documents
+  - Cache is now forcefully updated when adding or updating documentation
+  - Enhanced placeholder content for better search matching when content can't be fetched
+  - Increased timeout for content fetching from 10s to 15s
+  - Added better error handling for network requests
+
 ## [2.0.0] - 2025-03-15
 
 ### Changed
