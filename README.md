@@ -1,7 +1,7 @@
 # Aindreyway MCP Codex Keeper
 
 ![MCP Server](https://img.shields.io/badge/MCP-Server-blue)
-![Version](https://img.shields.io/badge/version-1.1.10-green)
+![Version](https://img.shields.io/badge/version-2.0.0-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 An intelligent MCP server that serves as a guardian of development knowledge, providing AI assistants with curated access to latest documentation and best practices.
@@ -95,7 +95,6 @@ Search through documentation with category filtering.
 - Mobile
 - AI
 - Cloud
-
 ## 🔧 Features
 
 The server automatically:
@@ -110,6 +109,18 @@ The server automatically:
   - Automatic cache cleanup
   - Memory-efficient search
   - Size and age limits for cached files
+  - Limited heap size (256MB)
+
+## 🏗️ Architecture
+
+The codebase follows a modular architecture with clear separation of concerns:
+
+- **Configuration**: Centralized configuration management
+- **Services**: Core business logic for documentation and search
+- **Handlers**: Request handlers for MCP tools and resources
+- **Utilities**: Reusable components for file system operations
+
+This architecture makes the codebase more maintainable, testable, and extensible.
   - Limited heap size (256MB)
 
 ## 📝 License
@@ -127,6 +138,7 @@ MIT License - feel free to use this in your projects!
 - [User Guide](README.md) - Installation and usage instructions
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute to the project
 - [Technical Documentation](PROJECT_SUMMARY.md) - Detailed technical information
+- [Changelog](CHANGELOG.md) - Version history and changes
 
 ## ⭐️ Support
 
