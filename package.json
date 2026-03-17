@@ -33,7 +33,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",
-    "axios": "^1.7.9",
+    "axios": "^1.13.5",
     "fs-extra": "^11.2.0",
     "isexe": "^3.1.1",
     "node-fetch": "^3.3.2"
